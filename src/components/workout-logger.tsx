@@ -5,16 +5,23 @@ import { useState } from "react";
 import { CircuitBlock } from "@/components/circuit-block";
 import { CircuitBuilder } from "@/components/circuit-builder";
 import { ExercisePicker } from "@/components/exercise-picker";
+import { PageTitle } from "@/components/page-title";
+import { RestTimer } from "@/components/rest-timer";
 import { StraightBlock } from "@/components/straight-block";
 import { Button, Field, Panel } from "@/components/ui";
+import { formatLoad } from "@/lib/copy";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { getWorkingLoad } from "@/lib/loads";
 import { activeWorkout, formatKg } from "@/lib/metrics";
+import { splitExerciseIds, splitHeadline } from "@/lib/split";
 import { useGymStore } from "@/lib/store";
 import { workoutTree, workoutVolume } from "@/lib/workout-tree";
 
 export function WorkoutLogger() {
   const router = useRouter();
   const data = useGymStore();
-  const startWorkout = useGymStore((s) => s.startWorkout);
+  const startSplitDay = useGymStore((s) => s.startSplitDay);
   const finishWorkout = useGymStore((s) => s.finishWorkout);
   const abandonWorkout = useGymStore((s) => s.abandonWorkout);
   const addStraightBlocks = useGymStore((s) => s.addStraightBlocks);
@@ -25,38 +32,59 @@ export function WorkoutLogger() {
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [rpe, setRpe] = useState<number>(7);
+  const [restKey, setRestKey] = useState(0);
 
   const workout = activeWorkout(data, data.activeUserId);
   const tree = workout ? workoutTree(data, workout.id) : null;
+  const { day, kicker } = splitHeadline(data, data.activeUserId);
 
   if (!workout || !tree) {
+    const moves = splitExerciseIds(day).map((id) => data.exercises.find((e) => e.id === id)).filter(Boolean);
     return (
-      <div className="mx-auto max-w-lg py-10 text-center">
-        <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">Sesión</p>
-        <h1 className="mt-2 text-3xl font-medium tracking-tight">¿Entrenamos?</h1>
-        <p className="mt-3 text-sm text-muted">
-          Empieza y añade de golpe todos los de pierna, pecho o el grupo que toque.
-          El peso que lleves se recuerda para la próxima.
-        </p>
+      <div className="mx-auto max-w-lg space-y-5">
+        <PageTitle title={kicker} />
+        <div>
+          <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">Entrenar</p>
+          <h1 className="mt-2 text-3xl font-medium tracking-tight">{kicker}</h1>
+          <p className="mt-2 text-sm text-muted">
+            Un toque arma el día completo. El peso que llevas ya está puesto.
+          </p>
+        </div>
+        <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+          {moves.map((ex) => {
+            if (!ex) return null;
+            const load = getWorkingLoad(data, data.activeUserId, ex.id);
+            return (
+              <li key={ex.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <p className="min-w-0 truncate text-sm">{ex.name}</p>
+                <p className="shrink-0 font-mono text-sm tabular-nums text-muted">
+                  {load ? formatLoad(load.weightKg, load.reps) : "sin peso aún"}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
         <Button
           variant="primary"
-          className="mt-8 h-12 w-full max-w-xs"
-          onClick={() => startWorkout()}
+          className="h-12 w-full"
+          onClick={() => startSplitDay(day.id)}
         >
-          Empezar entrenamiento
+          Armar {day.title.toLowerCase()}
         </Button>
       </div>
     );
   }
 
   const volume = workoutVolume(data, workout.id);
+  const heading = workout.title || "Entrenamiento";
 
   return (
     <div className="mx-auto max-w-lg space-y-4">
+      <PageTitle title={`${heading} · ${format(new Date(workout.startedAt), "d MMM", { locale: es })}`} />
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">En curso</p>
-          <h1 className="text-2xl font-medium tracking-tight">Entrenamiento</h1>
+          <h1 className="text-2xl font-medium tracking-tight">{heading}</h1>
           <p className="mt-1 font-mono text-sm tabular-nums text-muted">
             Carga de hoy: {formatKg(volume)} kg
           </p>
@@ -66,18 +94,18 @@ export function WorkoutLogger() {
         </Button>
       </div>
 
+      {restKey > 0 ? <RestTimer key={restKey} seconds={90} /> : null}
+
       {tree.blocks.map((block) =>
         block.kind === "circuit" ? (
-          <CircuitBlock key={block.id} block={block} />
+          <CircuitBlock key={block.id} block={block} onLogged={() => setRestKey((n) => n + 1)} />
         ) : (
-          <StraightBlock key={block.id} block={block} />
+          <StraightBlock key={block.id} block={block} onLogged={() => setRestKey((n) => n + 1)} />
         ),
       )}
 
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="primary" onClick={() => setPicker(true)}>
-          Añadir varios
-        </Button>
+        <Button onClick={() => setPicker(true)}>Añadir varios</Button>
         <Button onClick={() => setCircuit(true)}>Añadir circuito</Button>
       </div>
       <button
@@ -122,7 +150,7 @@ export function WorkoutLogger() {
                 <input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Tren inferior, empujes…"
+                  placeholder={heading}
                   className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 outline-none focus:border-accent"
                 />
               </Field>
@@ -154,7 +182,7 @@ export function WorkoutLogger() {
                   className="flex-1"
                   onClick={() => {
                     finishWorkout(workout.id, {
-                      title,
+                      title: title || heading,
                       notes,
                       perceivedExertion: rpe,
                     });

@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button, Field, Panel } from "@/components/ui";
 import { dayLabel } from "@/lib/format";
 import {
   MEAL_SLOTS,
-  bmi,
   emptyMeals,
   foodDayFor,
-  nutritionInsights,
+  nextMealPrompt,
   proteinTargetG,
   todayStamp,
 } from "@/lib/nutrition";
@@ -17,22 +16,43 @@ import type { MealLog } from "@/lib/types";
 
 export function NutritionDiary() {
   const data = useGymStore();
-  const saveFoodDay = useGymStore((s) => s.saveFoodDay);
-  const updateUser = useGymStore((s) => s.updateUser);
-  const me = data.users.find((u) => u.id === data.activeUserId);
   const [date, setDate] = useState(todayStamp());
-  const [dump, setDump] = useState("");
   const saved = foodDayFor(data, data.activeUserId, date);
+
+  function shiftDate(delta: number) {
+    const d = new Date(`${date}T12:00:00`);
+    d.setDate(d.getDate() + delta);
+    setDate(todayStamp(d));
+  }
+
+  return (
+    <DayEditor
+      key={`${data.activeUserId}:${date}:${saved?.id ?? "new"}:${saved?.updatedAt ?? ""}`}
+      date={date}
+      onYesterday={() => shiftDate(-1)}
+      onToday={date !== todayStamp() ? () => setDate(todayStamp()) : undefined}
+    />
+  );
+}
+
+function DayEditor({
+  date,
+  onYesterday,
+  onToday,
+}: {
+  date: string;
+  onYesterday: () => void;
+  onToday?: () => void;
+}) {
+  const data = useGymStore();
+  const saveFoodDay = useGymStore((s) => s.saveFoodDay);
+  const me = data.users.find((u) => u.id === data.activeUserId);
+  const saved = foodDayFor(data, data.activeUserId, date);
+  const [dump, setDump] = useState("");
   const [meals, setMeals] = useState<MealLog>(saved?.meals ?? emptyMeals());
 
-  useEffect(() => {
-    setMeals(saved?.meals ?? emptyMeals());
-    setDump("");
-  }, [date, saved?.id]);
-
   if (!me) return null;
-
-  const index = me.heightCm && me.weightKg ? bmi(me.heightCm, me.weightKg) : null;
+  const prompt = nextMealPrompt(meals);
 
   function setSlot(id: keyof MealLog, value: string) {
     setMeals((prev) => ({ ...prev, [id]: value }));
@@ -41,59 +61,35 @@ export function NutritionDiary() {
   return (
     <div className="space-y-4">
       <Panel className="space-y-3 p-4">
-        <p className="text-[11px] uppercase tracking-wider text-muted">Asistente de nutrición</p>
-        <p className="text-sm text-muted">
-          Objetivo: subir de peso de forma saludable y ganar músculo, con fuerza en el gym.
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Estatura (cm)">
-            <input
-              inputMode="decimal"
-              value={me.heightCm ?? ""}
-              onChange={(e) =>
-                updateUser(me.id, { heightCm: e.target.value ? Number(e.target.value) : null })
-              }
-              className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 font-mono outline-none focus:border-accent"
-            />
-          </Field>
-          <Field label="Peso (kg)">
-            <input
-              inputMode="decimal"
-              value={me.weightKg ?? ""}
-              onChange={(e) =>
-                updateUser(me.id, { weightKg: e.target.value ? Number(e.target.value) : null })
-              }
-              className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 font-mono outline-none focus:border-accent"
-            />
-          </Field>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-medium">{dayLabel(`${date}T12:00:00`)}</h2>
+          <div className="flex gap-1">
+            <Button className="h-10 px-3" onClick={onYesterday}>
+              Ayer
+            </Button>
+            {onToday ? (
+              <Button className="h-10 px-3" onClick={onToday}>
+                Hoy
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <p className="font-mono text-sm text-muted">
-          {index != null ? `IMC ${index}` : "Completa estatura y peso"}
-          {me.weightKg ? ` · ~${proteinTargetG(me.weightKg)} g proteína/día` : ""}
-        </p>
-      </Panel>
-
-      <Panel className="space-y-3 p-4">
-        <div className="flex items-end justify-between gap-3">
-          <h2 className="text-lg font-medium">Registro de hoy</h2>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="h-10 rounded-xl border border-line bg-surface-2 px-3 text-sm outline-none focus:border-accent"
-          />
-        </div>
-        <Field label="Qué comí (pégalo o escríbelo y lo ordeno)">
+        {me.weightKg ? (
+          <p className="text-sm text-muted">
+            Objetivo: ~{proteinTargetG(me.weightKg)} g de proteína y un extra calórico si el día se ve corto.
+          </p>
+        ) : null}
+        <Field label={prompt?.question ?? "¿Algo más que comiste?"}>
           <textarea
             value={dump}
             onChange={(e) => setDump(e.target.value)}
             rows={3}
-            placeholder="Desayuné avena con huevos. Almuerzo: arroz y pollo…"
+            placeholder="Pega un párrafo. Lo ordeno en las tomas."
             className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2 outline-none focus:border-accent"
           />
         </Field>
-        {MEAL_SLOTS.map((slot) => (
-          <Field key={slot.id} label={`${slot.label}:`}>
+        {MEAL_SLOTS.filter((slot) => meals[slot.id].trim() || slot.id === prompt?.id).map((slot) => (
+          <Field key={slot.id} label={slot.label}>
             <textarea
               value={meals[slot.id]}
               onChange={(e) => setSlot(slot.id, e.target.value)}
@@ -114,38 +110,14 @@ export function NutritionDiary() {
             setDump("");
           }}
         >
-          Guardar comida
+          Guardar
         </Button>
         {saved?.comment ? (
-          <p className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm">
-            {saved.comment}
-          </p>
+          <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm">{saved.comment}</p>
         ) : null}
       </Panel>
-
-      <FailingCard />
       <PastDays />
     </div>
-  );
-}
-
-function FailingCard() {
-  const data = useGymStore();
-  const report = nutritionInsights(data.foodDays, data.activeUserId, 14);
-  return (
-    <Panel className="space-y-2 p-4">
-      <p className="text-[11px] uppercase tracking-wider text-muted">En qué estás fallando</p>
-      <p className="font-mono text-xs text-muted">
-        {report.loggedDays} días con registro · {report.missedDays} sin anotar · últimos {report.lookback} días
-      </p>
-      <ul className="space-y-2 text-sm">
-        {report.issues.map((issue) => (
-          <li key={issue} className="rounded-xl border border-line bg-surface-2 px-3 py-2">
-            {issue}
-          </li>
-        ))}
-      </ul>
-    </Panel>
   );
 }
 
@@ -154,28 +126,26 @@ function PastDays() {
   const mine = [...(data.foodDays ?? [])]
     .filter((d) => d.userId === data.activeUserId)
     .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 30);
+    .slice(0, 14);
   if (mine.length === 0) return null;
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-medium text-muted">Historial de comidas</h2>
+      <h2 className="text-sm font-medium text-muted">Días anteriores</h2>
       <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
-        {mine.map((day) => (
-          <li key={day.id} className="space-y-2 px-4 py-3">
-            <p className="text-sm font-medium">{dayLabel(`${day.date}T12:00:00`)}</p>
-            {MEAL_SLOTS.map((slot) => (
-              <p key={slot.id} className="text-sm">
-                <span className="text-muted">{slot.label}:</span>{" "}
-                {day.meals[slot.id].trim() ? (
-                  day.meals[slot.id]
-                ) : (
-                  <span className="text-danger">no registrado</span>
-                )}
-              </p>
-            ))}
-            {day.comment ? <p className="text-xs text-muted">{day.comment}</p> : null}
-          </li>
-        ))}
+        {mine.map((day) => {
+          const filled = MEAL_SLOTS.filter((s) => day.meals[s.id].trim());
+          return (
+            <li key={day.id} className="space-y-1 px-4 py-3">
+              <p className="text-sm font-medium">{dayLabel(`${day.date}T12:00:00`)}</p>
+              {filled.map((slot) => (
+                <p key={slot.id} className="text-sm">
+                  <span className="text-muted">{slot.label}:</span> {day.meals[slot.id]}
+                </p>
+              ))}
+              {day.comment ? <p className="text-xs text-muted">{day.comment}</p> : null}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

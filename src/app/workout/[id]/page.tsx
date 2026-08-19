@@ -3,8 +3,12 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { PageTitle } from "@/components/page-title";
 import { Button, Field, Panel } from "@/components/ui";
 import { dayFull } from "@/lib/format";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { personName } from "@/lib/people";
 import { useGymStore } from "@/lib/store";
 import { formatSet, workoutTree, workoutVolume } from "@/lib/workout-tree";
 
@@ -35,9 +39,12 @@ export default function WorkoutDetailPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-4">
+      <PageTitle
+        title={`${tree.title ?? "Entrenamiento"} · ${format(new Date(tree.startedAt), "d MMM", { locale: es })}`}
+      />
       <div>
         <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">
-          {author?.displayName}
+          {personName(author)}
         </p>
         <h1 className="text-3xl font-medium tracking-tight">{tree.title ?? "Entrenamiento"}</h1>
         <p className="mt-1 text-sm text-muted">

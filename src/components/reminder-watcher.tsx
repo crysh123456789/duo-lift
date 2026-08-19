@@ -15,10 +15,7 @@ export function ReminderWatcher() {
   const notified = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!reminders?.enabled) {
-      setBanner(null);
-      return;
-    }
+    if (!reminders?.enabled) return;
 
     function tick() {
       const state = useGymStore.getState();
@@ -42,7 +39,7 @@ export function ReminderWatcher() {
     return () => window.clearInterval(id);
   }, [reminders, activeUserId, foodDays, workouts]);
 
-  if (!banner) return null;
+  if (!reminders?.enabled || !banner) return null;
 
   return (
     <div className="border-b border-accent/40 bg-accent/10 px-4 py-2 text-sm">

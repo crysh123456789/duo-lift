@@ -65,8 +65,8 @@ export function dueReminders(opts: {
     due.push({
       key,
       title: `Hora de ${slot.label.toLowerCase()}`,
-      body: `Regístralo para no perder el superávit. Si ya comiste, anótalo en Perfil.`,
-      href: "/profile",
+      body: `Si ya comiste, anótalo en el diario.`,
+      href: "/nutrition",
     });
   }
 

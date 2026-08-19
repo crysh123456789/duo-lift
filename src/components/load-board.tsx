@@ -4,6 +4,7 @@ import { Minus, Plus } from "lucide-react";
 import { dayLabel } from "@/lib/format";
 import { GROUP_LABELS, workingLoadBoard } from "@/lib/loads";
 import { lastExerciseDate } from "@/lib/metrics";
+import { personName } from "@/lib/people";
 import { useGymStore } from "@/lib/store";
 import type { MuscleGroup } from "@/lib/types";
 import { Button } from "./ui";
@@ -31,8 +32,8 @@ export function LoadBoard() {
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted">
-        Cargas actuales de ambos, sacadas de tus hojas de Drive y de las series
-        que marquéis. El ±2.5 kg aplica a quien esté seleccionado arriba.
+        Cargas que llevan los dos, de las series que marquen. El ±2.5 kg aplica a
+        quien esté activo arriba.
       </p>
       {grouped.map((section) => (
         <section key={section.group} className="overflow-hidden rounded-2xl border border-line">
@@ -53,12 +54,12 @@ export function LoadBoard() {
                           const when = lastExerciseDate(data, user.id, row.exercise.id);
                           return (
                             <p key={user.id}>
-                              <span className="text-foreground">{user.displayName}:</span>{" "}
+                              <span className="text-foreground">{personName(user) || "Nombre"}:</span>{" "}
                               {load
                                 ? `${load.weightKg} kg × ${load.reps}${
                                     load.repsRight != null ? `/${load.repsRight}` : ""
                                   }`
-                                : "sin registrar"}
+                                : "sin peso"}
                               {when ? ` · ${dayLabel(when)}` : ""}
                             </p>
                           );
@@ -82,7 +83,7 @@ export function LoadBoard() {
                         </Button>
                       </div>
                       <p className="font-mono text-sm tabular-nums">
-                        {mine ? `${mine.weightKg} kg` : "—"}
+                        {mine ? `${mine.weightKg} kg` : "sin peso"}
                       </p>
                     </div>
                   </div>

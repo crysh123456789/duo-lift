@@ -63,7 +63,7 @@ export function workoutVolume(data: GymData, workoutId: string): number {
 }
 
 export function formatSet(set: SetLog): string {
-  const kg = set.weightKg == null ? "—" : `${set.weightKg} kg`;
+  const kg = set.weightKg == null ? "cuerpo" : `${set.weightKg} kg`;
   if (set.repsRight != null) {
     return `${kg} × ${set.reps ?? "—"}/${set.repsRight}`;
   }

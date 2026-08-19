@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Panel } from "@/components/ui";
+import { TimeField } from "@/components/time-field";
 import { MEAL_SLOTS } from "@/lib/nutrition";
 import { DEFAULT_REMINDERS, remindersIcs } from "@/lib/reminders";
 import { useGymStore } from "@/lib/store";
@@ -56,7 +57,7 @@ export function ReminderSettings() {
       </label>
       <div className="space-y-2">
         {MEAL_SLOTS.map((slot) => (
-          <div key={slot.id} className="grid grid-cols-[1fr_7rem] items-center gap-2">
+          <div key={slot.id} className="grid grid-cols-[1fr_auto] items-center gap-2">
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -65,15 +66,13 @@ export function ReminderSettings() {
               />
               {slot.label}
             </label>
-            <input
-              type="time"
+            <TimeField
               value={reminders.meals[slot.id].time}
-              onChange={(e) => setMeal(slot.id, { time: e.target.value })}
-              className="h-10 rounded-xl border border-line bg-surface-2 px-2 text-sm outline-none focus:border-accent"
+              onChange={(time) => setMeal(slot.id, { time })}
             />
           </div>
         ))}
-        <div className="grid grid-cols-[1fr_7rem] items-center gap-2">
+        <div className="grid grid-cols-[1fr_auto] items-center gap-2">
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -84,11 +83,9 @@ export function ReminderSettings() {
             />
             Gym
           </label>
-          <input
-            type="time"
+          <TimeField
             value={reminders.gym.time}
-            onChange={(e) => updateReminders({ gym: { ...reminders.gym, time: e.target.value } })}
-            className="h-10 rounded-xl border border-line bg-surface-2 px-2 text-sm outline-none focus:border-accent"
+            onChange={(time) => updateReminders({ gym: { ...reminders.gym, time } })}
           />
         </div>
       </div>

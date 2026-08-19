@@ -1,4 +1,4 @@
-import type { FoodDay, MealLog, MealSlot, NutritionGoal, User } from "./types";
+import type { FoodDay, MealLog, MealSlot, User } from "./types";
 
 export const MEAL_SLOTS: { id: MealSlot; label: string }[] = [
   { id: "desayuno", label: "Desayuno" },
@@ -194,31 +194,20 @@ export function nutritionInsights(days: FoodDay[] | undefined, userId: string, l
 
   const worstSlot = [...MEAL_SLOTS].sort((a, b) => skipCount[b.id] - skipCount[a.id])[0];
   const issues: string[] = [];
-  if (missedDays >= 3) {
-    issues.push(
-      `En ${lookback} días no registraste ${missedDays}. Sin el diario no se ve el superávit real.`,
-    );
-  }
-  if (worstSlot && skipCount[worstSlot.id] >= 4) {
-    issues.push(
-      `Lo que más se te escapa: ${worstSlot.label.toLowerCase()} (${skipCount[worstSlot.id]} veces). Esa toma es la más fácil para sumar calorías.`,
-    );
-  }
-  if (noProtein >= 3) {
-    issues.push(
-      `${noProtein} días sin una proteína clara (huevo, pollo, carne, atún, lácteo). Ahí se frena la masa muscular.`,
-    );
-  }
-  if (thinDays >= 3) {
-    issues.push(
-      `${thinDays} días con menos de 3 tomas. Para subir de 60 kg hace falta no saltarse snacks.`,
-    );
-  }
-  if (issues.length === 0 && loggedDays > 0) {
-    issues.push("Últimas dos semanas bastante completas. Sigue llenando las 5 tomas y la proteína.");
-  }
   if (loggedDays === 0) {
-    issues.push("Todavía no hay historial suficiente. Guarda unos días y aquí verás el patrón de fallos.");
+    issues.push("Pega lo que comiste y lo ordeno. El objetivo es superávit suave y proteína para ganar músculo.");
+  } else if (noProtein >= 3) {
+    issues.push(
+      "Para ganar músculo, mete huevo, pollo, atún, carne o un lácteo en las tomas grandes.",
+    );
+  } else if (thinDays >= 3) {
+    issues.push("Un snack extra (media mañana o media tarde) es el atajo más fácil al superávit.");
+  } else if (worstSlot && skipCount[worstSlot.id] >= 4) {
+    issues.push(
+      `${worstSlot.label} suele ser el hueco más fácil de llenar para sumar calorías.`,
+    );
+  } else {
+    issues.push("Vas hacia el superávit. Sigue con proteína cerca de ~1.8 g/kg y carbos alrededor del entreno.");
   }
 
   return { issues, skipCount, missedDays, noProtein, thinDays, loggedDays, lookback };
@@ -228,7 +217,7 @@ export function nutritionComment(user: User, meals: MealLog): string {
   const filled = MEAL_SLOTS.filter((s) => meals[s.id].trim());
   const blob = filled.map((s) => meals[s.id]).join(" ");
   if (filled.length === 0) {
-    return "Aún no hay comidas. Cuando me digas qué comiste, lo ordeno en las cinco tomas y te digo si empuja el superávit.";
+    return "Cuando me digas qué comiste, lo ordeno y te digo si empuja el superávit.";
   }
 
   const protein = hasAny(blob, PROTEIN);
@@ -260,7 +249,7 @@ export function nutritionComment(user: User, meals: MealLog): string {
   }
 
   if (gaps.length > 0 && filled.length < 5) {
-    bits.push(`Tomas vacías: ${gaps.join(", ")}. Un snack extra suele ser lo más fácil para subir de peso sin forzar el estómago.`);
+    bits.push(`Si hay hueco, un extra en ${gaps[0]?.toLowerCase()} suma calorías sin forzar el estómago.`);
   }
 
   if (user.weightKg) {
@@ -274,4 +263,17 @@ export function nutritionComment(user: User, meals: MealLog): string {
 
 export function foodDayFor(data: { foodDays?: FoodDay[] }, userId: string, date: string) {
   return (data.foodDays ?? []).find((d) => d.userId === userId && d.date === date) ?? null;
+}
+
+export function nextMealPrompt(meals: MealLog | undefined): { id: MealSlot; question: string } | null {
+  const current = meals ?? emptyMeals();
+  const prompts: Record<MealSlot, string> = {
+    desayuno: "¿Qué desayunaste?",
+    mediaManana: "¿Qué te tomaste a media mañana?",
+    almuerzo: "¿Qué almorzaste?",
+    mediaTarde: "¿Qué merendaste?",
+    cena: "¿Qué cenaste?",
+  };
+  const next = MEAL_SLOTS.find((s) => !current[s.id]?.trim());
+  return next ? { id: next.id, question: prompts[next.id] } : null;
 }

@@ -5,6 +5,8 @@ import { persist } from "zustand/middleware";
 import { IDS, nid } from "./ids";
 import { bumpKg, getWorkingLoad, loadKey } from "./loads";
 import { createSeed, mergeGymData, stripLegacySeed } from "./seed";
+import { duoUnlocked } from "./session-flag";
+import { SPLIT, type SplitDay } from "./split";
 import type {
   Exercise,
   GymData,
@@ -32,6 +34,7 @@ type GymStore = GymData & {
     patch: Partial<Pick<User, "displayName" | "unitSystem" | "heightCm" | "weightKg" | "nutritionGoal">>,
   ) => void;
   startWorkout: () => string;
+  startSplitDay: (dayId?: SplitDay["id"]) => string;
   finishWorkout: (workoutId: string, payload?: FinishPayload) => void;
   abandonWorkout: (workoutId: string) => void;
   addStraightBlock: (workoutId: string, exerciseId: string) => string;
@@ -89,6 +92,7 @@ export const useGymStore = create<GymStore>()(
         })),
 
       startWorkout: () => {
+        if (!duoUnlocked()) return "";
         const state = get();
         const existing = state.workouts.find(
           (w) => w.userId === state.activeUserId && w.status === "in_progress",
@@ -114,7 +118,31 @@ export const useGymStore = create<GymStore>()(
         return id;
       },
 
-      finishWorkout: (workoutId, payload) =>
+      startSplitDay: (dayId) => {
+        if (!duoUnlocked()) return "";
+        const day = SPLIT.find((d) => d.id === dayId) ?? SPLIT[0]!;
+        const id = get().startWorkout();
+        const treeNow = get();
+        const already = treeNow.blocks.some((b) => b.workoutId === id);
+        set((state) => ({
+          workouts: state.workouts.map((w) =>
+            w.id === id ? { ...w, title: w.title || day.title } : w,
+          ),
+        }));
+        if (already) return id;
+        for (const circuit of day.circuits) {
+          get().addCircuitBlock(id, {
+            name: circuit.name,
+            exerciseIds: circuit.exerciseIds,
+            rounds: circuit.rounds,
+          });
+        }
+        if (day.straightIds.length > 0) get().addStraightBlocks(id, day.straightIds);
+        return id;
+      },
+
+      finishWorkout: (workoutId, payload) => {
+        if (!duoUnlocked()) return;
         set((state) => ({
           workouts: state.workouts.map((w) =>
             w.id === workoutId
@@ -128,7 +156,8 @@ export const useGymStore = create<GymStore>()(
                 }
               : w,
           ),
-        })),
+        }));
+      },
 
       abandonWorkout: (workoutId) =>
         set((state) => {
@@ -296,7 +325,8 @@ export const useGymStore = create<GymStore>()(
         return id;
       },
 
-      updateSet: (setId, patch) =>
+      updateSet: (setId, patch) => {
+        if (!duoUnlocked()) return;
         set((state) => {
           const current = state.sets.find((s) => s.id === setId);
           if (!current) return {};
@@ -321,7 +351,8 @@ export const useGymStore = create<GymStore>()(
             workingLoads,
             sets: state.sets.map((s) => (s.id === setId ? next : s)),
           };
-        }),
+        });
+      },
 
       bumpStationWeight: (stationId, delta) =>
         set((state) => {
@@ -451,6 +482,7 @@ export const useGymStore = create<GymStore>()(
       },
 
       saveFoodDay: ({ date, meals, rawInput }) => {
+        if (!duoUnlocked()) return "";
         const state = get();
         const user = state.users.find((u) => u.id === state.activeUserId);
         const existing = (state.foodDays ?? []).find(
@@ -509,13 +541,28 @@ export const useGymStore = create<GymStore>()(
     }),
     {
       name: "duo-lift-v2",
-      version: 6,
+      version: 7,
       migrate: (persistedState, fromVersion) => {
         const persisted = (persistedState ?? {}) as Partial<GymStore>;
         const cleaned = fromVersion < 6 ? stripLegacySeed(persisted) : persisted;
+        const merged = mergeGymData(cleaned, createSeed(), { preferSeedLoads: fromVersion < 6 });
+        if (fromVersion < 7) {
+          const seed = createSeed();
+          merged.users = merged.users.map((user) => {
+            const fromSeed = seed.users.find((s) => s.id === user.id);
+            const prototype = !user.displayName?.trim() || user.displayName.trim().toLowerCase() === "amigo";
+            return prototype && fromSeed ? { ...user, displayName: fromSeed.displayName } : user;
+          });
+          merged.workouts = merged.workouts.map((w) => {
+            const fromSeed = seed.workouts.find((s) => s.id === w.id);
+            return fromSeed ? { ...w, notes: fromSeed.notes } : w;
+          });
+          merged.duo = { ...merged.duo, name: seed.duo.name };
+        }
         return {
           ...cleaned,
-          ...mergeGymData(cleaned, createSeed(), { preferSeedLoads: fromVersion < 6 }),
+          ...merged,
+          activeUserId: (cleaned as Partial<GymStore>).activeUserId ?? IDS.cristian,
         };
       },
       merge: (persistedState, currentState) => {

@@ -8,11 +8,11 @@ import { es } from "date-fns/locale";
 import type { GymData } from "./types";
 import { workoutTree, workoutVolume } from "./workout-tree";
 
-export function weeklyVolume(data: GymData, weekCount = 6) {
+export function weeklyVolume(data: GymData, weekCount = 4) {
   const end = new Date();
   const start = startOfWeek(subWeeks(end, weekCount - 1), { weekStartsOn: 1 });
   const weeks = eachWeekOfInterval({ start, end }, { weekStartsOn: 1 });
-  return weeks.map((weekStart) => {
+  const rows = weeks.map((weekStart) => {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
     const volumes: Record<string, number> = {};
@@ -31,6 +31,11 @@ export function weeklyVolume(data: GymData, weekCount = 6) {
     }
     return row;
   });
+  const firstData = rows.findIndex((row) =>
+    data.users.some((user) => Number(row[user.id] ?? 0) > 0),
+  );
+  if (firstData <= 0) return rows;
+  return rows.slice(firstData);
 }
 
 export function maxWeightHistory(data: GymData, exerciseId: string) {
@@ -130,6 +135,45 @@ export function sessionSummary(data: GymData, workoutId: string): string {
       : b.stations.map((s) => s.exercise.name),
   );
   return names.slice(0, 3).join(" · ");
+}
+
+export function lastLoggedSet(
+  data: GymData,
+  userId: string,
+  exerciseId: string,
+  beforeIso?: string,
+): { weightKg: number | null; reps: number | null; repsRight: number | null } | null {
+  const completed = data.workouts
+    .filter((w) => w.userId === userId && w.status === "completed")
+    .filter((w) => !beforeIso || w.startedAt < beforeIso)
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+
+  for (const workout of completed) {
+    const tree = workoutTree(data, workout.id);
+    if (!tree) continue;
+    const sets = tree.blocks
+      .flatMap((b) => b.stations)
+      .filter((s) => s.exerciseId === exerciseId)
+      .flatMap((s) => s.sets)
+      .filter((s) => s.completed && !s.isWarmup)
+      .sort((a, b) => b.loggedAt.localeCompare(a.loggedAt));
+    const last = sets[0];
+    if (last) {
+      return { weightKg: last.weightKg, reps: last.reps, repsRight: last.repsRight };
+    }
+  }
+  return null;
+}
+
+export function isPersonalRecord(
+  data: GymData,
+  userId: string,
+  exerciseId: string,
+  weightKg: number | null,
+): boolean {
+  if (weightKg == null) return false;
+  const prev = bestWeight(data, userId, exerciseId);
+  return prev == null || weightKg > prev;
 }
 
 export function lastExerciseDate(data: GymData, userId: string, exerciseId: string): string | null {

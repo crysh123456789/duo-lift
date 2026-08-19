@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useSyncExternalStore, type ReactNode } from "react";
 import { useGymStore } from "@/lib/store";
 
@@ -8,11 +9,14 @@ function subscribeHydration(onChange: () => void) {
 }
 
 export function HydrateGate({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const ready = useSyncExternalStore(
     subscribeHydration,
     () => useGymStore.persist.hasHydrated(),
     () => false,
   );
+
+  if (pathname === "/login") return children;
 
   if (!ready) {
     return (

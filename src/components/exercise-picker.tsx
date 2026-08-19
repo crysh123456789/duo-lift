@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Exercise, MuscleGroup } from "@/lib/types";
+import { addExercisesLabel } from "@/lib/copy";
 import { getWorkingLoad } from "@/lib/loads";
 import { useGymStore } from "@/lib/store";
 import { Button, Field, Panel } from "./ui";
@@ -200,7 +201,7 @@ export function ExercisePicker({
                 onPickMany?.(chosen);
               }}
             >
-              Añadir {selected.length} ejercicio{selected.length === 1 ? "" : "s"}
+              {addExercisesLabel(selected.length)}
             </Button>
           </div>
         ) : null}

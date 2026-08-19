@@ -290,8 +290,8 @@ function day1(userId: string, id: string, daysAgo: number, current: boolean): Se
     title: "Pierna",
     rpe: current ? 8 : 7,
     notes: current
-      ? "Control_Rutinas_Gimnasio · Día 1. Circuito abductores → zancadas dobles → hack. Prensa 90 a 140 kg."
-      : "Semana previa del mismo día de pierna, en el rango bajo del Excel.",
+      ? "Circuito abductores → zancadas → hack. Prensa 90 a 140 kg."
+      : "Misma pierna, rango más bajo.",
     items: [
       {
         kind: "circuit",
@@ -319,7 +319,7 @@ function day2(userId: string, id: string, bancaKg: number, aperturaKg: number): 
     daysAgo: 2,
     title: "Pecho",
     rpe: 7,
-    notes: "Control_Rutinas_Gimnasio · Día 2.",
+    notes: "Presses y aperturas. Fondos a cuerpo.",
     items: [
       { exerciseId: EX.banca, sets: nTimes(3, bancaKg, 12) },
       { exerciseId: EX.declinado, sets: nTimes(3, bancaKg, 12) },
@@ -337,7 +337,7 @@ function day3(userId: string, id: string): SessionSpec {
     daysAgo: 4,
     title: "Glúteos",
     rpe: 7,
-    notes: "Control_Rutinas_Gimnasio · Día 3.",
+    notes: "Búlgaras, muerto, hip thrust y goblet.",
     items: [
       { exerciseId: EX.bulgaras, sets: nTimes(3, bulgarasKg, 12, 12), notes: "Mancuerna" },
       { exerciseId: EX.deadlift, sets: nTimes(3, muertoKg, 12) },
@@ -354,7 +354,7 @@ function day4(userId: string, id: string): SessionSpec {
     daysAgo: 5,
     title: "Abdomen y hombros",
     rpe: 6,
-    notes: "Control_Rutinas_Gimnasio · Día 4.",
+    notes: "Abs con disco y hombros con mancuerna.",
     items: [
       { exerciseId: EX.absDisco, sets: nTimes(3, absKg, 20), notes: "Disco" },
       { exerciseId: EX.rodilla, sets: nTimes(3, null, 20), notes: "Máquina de fondos" },
@@ -374,7 +374,7 @@ function day5(userId: string, id: string, daysAgo = 0): SessionSpec {
     hour: 19,
     title: "Espalda y bíceps",
     rpe: 8,
-    notes: "Control_Rutinas_Gimnasio · Día 5. Jalón + invertida en biserie 12+12.",
+    notes: "Jalón + invertida en biserie 12+12.",
     items: [
       {
         kind: "circuit",
@@ -471,17 +471,17 @@ export function createSeed(): GymData {
       },
       {
         id: IDS.amigo,
-        email: "amigo@duo.lift",
-        displayName: "Amigo",
+        email: "duo@duo.lift",
+        displayName: "",
         avatarHue: 204,
         unitSystem: "kg",
         heightCm: null,
         weightKg: null,
-        nutritionGoal: null,
+        nutritionGoal: "surplus_muscle",
         createdAt,
       },
     ],
-    duo: { id: IDS.duo, name: "Cristian & Amigo", inviteCode: "GYM2", createdAt },
+    duo: { id: IDS.duo, name: "Duo Lift", inviteCode: "GYM2", createdAt },
     members: [
       { duoId: IDS.duo, userId: IDS.cristian, role: "owner", joinedAt: createdAt },
       { duoId: IDS.duo, userId: IDS.amigo, role: "member", joinedAt: createdAt },
@@ -574,12 +574,14 @@ function mergeUsers(seed: GymData["users"], existing: GymData["users"] | undefin
   if (prev.length === 0) return seed;
   return prev.map((user) => {
     const fromSeed = seed.find((s) => s.id === user.id);
+    const prototypeName = !user.displayName?.trim() || user.displayName.trim().toLowerCase() === "amigo";
     return {
       ...fromSeed,
       ...user,
+      displayName: prototypeName ? (fromSeed?.displayName ?? "") : user.displayName,
       heightCm: user.heightCm ?? fromSeed?.heightCm ?? null,
       weightKg: user.weightKg ?? fromSeed?.weightKg ?? null,
-      nutritionGoal: user.nutritionGoal ?? fromSeed?.nutritionGoal ?? null,
+      nutritionGoal: user.nutritionGoal ?? fromSeed?.nutritionGoal ?? "surplus_muscle",
     };
   });
 }

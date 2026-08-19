@@ -1,19 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Legend,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { exerciseByName, exercisesWithLogs, maxWeightHistory, weeklyVolume } from "@/lib/metrics";
+import { PageTitle } from "@/components/page-title";
+import { EX } from "@/lib/seed";
+import { bestWeight, formatKg, volumeLastDays, weeklyVolume } from "@/lib/metrics";
+import { personName } from "@/lib/people";
 import { useGymStore } from "@/lib/store";
 
 const tooltipStyle = {
@@ -25,42 +25,49 @@ const tooltipStyle = {
 
 const COLORS = ["#c8f542", "#7eb8ff"];
 
+const LIFTS = [
+  { id: EX.banca, name: "Banca" },
+  { id: EX.hatch, name: "Hack" },
+  { id: EX.prensa, name: "Prensa" },
+];
+
 export default function StatsPage() {
   const data = useGymStore();
-  const logged = exercisesWithLogs(data);
-  const hatch = exerciseByName(data, "Cuclillas Hack");
-  const [exerciseId, setExerciseId] = useState<string>(hatch?.id ?? logged[0]?.id ?? "");
-  const selected = data.exercises.find((e) => e.id === exerciseId) ?? logged[0];
-
-  const volume = weeklyVolume(data, 6);
-  const maxHist = selected ? maxWeightHistory(data, selected.id) : {};
-
-  const labels = new Set<string>();
-  for (const user of data.users) {
-    for (const p of maxHist[user.id] ?? []) labels.add(p.date);
-  }
-  const lineRows = [...labels].map((label) => {
-    const row: Record<string, string | number | undefined> = { label };
-    for (const user of data.users) {
-      row[user.id] = maxHist[user.id]?.find((p) => p.date === label)?.kg;
-    }
-    return row;
-  });
+  const volume = weeklyVolume(data, 4);
+  const thisWeek = volume[volume.length - 1];
 
   return (
     <div className="space-y-8">
+      <PageTitle title="Progreso" />
       <div>
         <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">Progreso</p>
-        <h1 className="text-3xl font-medium tracking-tight">Comparar</h1>
+        <h1 className="text-3xl font-medium tracking-tight">Esta semana</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Volumen semanal de ambos y peso máximo por ejercicio. Las curvas solo
-          aparecen en sesiones donde ese movimiento se entrenó.
+          Volumen de los dos y las alzas que importan: banca, hack y prensa.
         </p>
       </div>
 
+      <section className="grid gap-3 md:grid-cols-2">
+        {data.users.map((user, i) => {
+          const weekKg = Number(thisWeek?.[user.id] ?? volumeLastDays(data, user.id, 7));
+          const other = data.users.find((u) => u.id !== user.id);
+          const otherKg = other ? Number(thisWeek?.[other.id] ?? 0) : 0;
+          const lead = weekKg >= otherKg;
+          return (
+            <div key={user.id} className="rounded-2xl border border-line bg-surface p-4">
+              <p className="text-sm" style={{ color: COLORS[i] }}>
+                {personName(user) || "Sin nombre"}
+              </p>
+              <p className="font-mono text-3xl tabular-nums">{formatKg(weekKg)} kg</p>
+              <p className="text-xs text-muted">{lead ? "Va arriba esta semana" : "Persiguiendo"}</p>
+            </div>
+          );
+        })}
+      </section>
+
       <section>
         <h2 className="mb-1 text-sm font-medium">Volumen semanal (kg)</h2>
-        <p className="mb-3 text-xs text-muted">Suma de peso × repeticiones. Semanas de lunes a domingo.</p>
+        <p className="mb-3 text-xs text-muted">Semanas con dato, lunes a domingo.</p>
         <div className="h-64 rounded-2xl border border-line bg-surface p-3">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={volume}>
@@ -73,7 +80,7 @@ export default function StatsPage() {
                 <Bar
                   key={user.id}
                   dataKey={user.id}
-                  name={user.displayName}
+                  name={personName(user) || "Duo"}
                   fill={COLORS[i] ?? COLORS[0]}
                   radius={[4, 4, 0, 0]}
                 />
@@ -84,45 +91,21 @@ export default function StatsPage() {
       </section>
 
       <section>
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-medium">Peso máximo (kg)</h2>
-            <p className="text-xs text-muted">Serie más pesada de la sesión, sin calentamientos.</p>
-          </div>
-          <select
-            value={selected?.id ?? ""}
-            onChange={(e) => setExerciseId(e.target.value)}
-            className="h-10 rounded-xl border border-line bg-surface-2 px-3 text-sm outline-none focus:border-accent"
-          >
-            {(logged.length > 0 ? logged : data.exercises).map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="h-64 rounded-2xl border border-line bg-surface p-3">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={lineRows}>
-              <CartesianGrid stroke="#2d3224" vertical={false} />
-              <XAxis dataKey="label" stroke="#9aa186" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#9aa186" fontSize={11} tickLine={false} axisLine={false} domain={["auto", "auto"]} />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Legend />
-              {data.users.map((user, i) => (
-                <Line
-                  key={user.id}
-                  type="monotone"
-                  dataKey={user.id}
-                  name={user.displayName}
-                  stroke={COLORS[i] ?? COLORS[0]}
-                  strokeWidth={2}
-                  dot
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <h2 className="mb-3 text-sm font-medium">Alzas grandes</h2>
+        <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+          {LIFTS.map((lift) => (
+            <li key={lift.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <p className="text-sm">{lift.name}</p>
+              <div className="flex gap-4 font-mono text-sm tabular-nums">
+                {data.users.map((user, i) => (
+                  <span key={user.id} style={{ color: COLORS[i] }}>
+                    {bestWeight(data, user.id, lift.id) ?? "—"} kg
+                  </span>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
       </section>
     </div>
   );

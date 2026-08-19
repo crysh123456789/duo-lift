@@ -2,11 +2,19 @@
 
 import { Check, Minus, Plus, Trash2 } from "lucide-react";
 import type { BlockNode } from "@/lib/workout-tree";
+import { formatLoad } from "@/lib/copy";
 import { getWorkingLoad } from "@/lib/loads";
+import { bestWeight, lastLoggedSet } from "@/lib/metrics";
 import { useGymStore } from "@/lib/store";
 import { Button, NumberField } from "./ui";
 
-export function StraightBlock({ block }: { block: BlockNode }) {
+export function StraightBlock({
+  block,
+  onLogged,
+}: {
+  block: BlockNode;
+  onLogged?: () => void;
+}) {
   const data = useGymStore();
   const station = block.stations[0];
   const updateSet = useGymStore((s) => s.updateSet);
@@ -22,6 +30,10 @@ export function StraightBlock({ block }: { block: BlockNode }) {
   const load = workout
     ? getWorkingLoad(data, workout.userId, station.exerciseId)
     : null;
+  const last = workout
+    ? lastLoggedSet(data, workout.userId, station.exerciseId, workout.startedAt)
+    : null;
+  const lastBest = workout ? (bestWeight(data, workout.userId, station.exerciseId) ?? 0) : 0;
 
   return (
     <section className="rounded-2xl border border-line bg-surface p-4">
@@ -29,6 +41,11 @@ export function StraightBlock({ block }: { block: BlockNode }) {
         <div>
           <p className="text-[11px] uppercase tracking-wider text-muted">Ejercicio</p>
           <h3 className="text-lg font-medium">{station.exercise.name}</h3>
+          {last ? (
+            <p className="mt-1 text-xs text-muted">
+              La vez pasada: {formatLoad(last.weightKg, last.reps)}
+            </p>
+          ) : null}
         </div>
         <button
           type="button"
@@ -44,7 +61,7 @@ export function StraightBlock({ block }: { block: BlockNode }) {
         <div>
           <p className="text-[11px] uppercase tracking-wider text-muted">Peso que llevas</p>
           <p className="font-mono text-xl tabular-nums">
-            {load ? `${load.weightKg} kg` : "—"}
+            {load ? `${load.weightKg} kg` : station.exercise.equipment === "bodyweight" ? "cuerpo" : "sin peso"}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1">
@@ -65,7 +82,9 @@ export function StraightBlock({ block }: { block: BlockNode }) {
       </div>
 
       <div className="space-y-2">
-        {station.sets.map((set, i) => (
+        {station.sets.map((set, i) => {
+          const pr = set.completed && set.weightKg != null && set.weightKg > lastBest;
+          return (
           <div
             key={set.id}
             className={`grid items-end gap-2 rounded-xl border px-2 py-2 ${
@@ -92,7 +111,11 @@ export function StraightBlock({ block }: { block: BlockNode }) {
             ) : null}
             <button
               type="button"
-              onClick={() => toggleSetComplete(set.id)}
+              onClick={() => {
+                const wasDone = set.completed;
+                toggleSetComplete(set.id);
+                if (!wasDone) onLogged?.();
+              }}
               className={`mb-1 grid h-12 w-10 place-items-center rounded-xl ${
                 set.completed ? "bg-accent text-accent-ink" : "border border-line text-muted"
               }`}
@@ -100,6 +123,9 @@ export function StraightBlock({ block }: { block: BlockNode }) {
             >
               <Check size={16} />
             </button>
+            {pr ? (
+              <p className="col-span-full text-[11px] text-accent">PR · superaste la carga previa</p>
+            ) : null}
             {station.sets.length > 1 && i === station.sets.length - 1 ? (
               <button
                 type="button"
@@ -110,7 +136,8 @@ export function StraightBlock({ block }: { block: BlockNode }) {
               </button>
             ) : null}
           </div>
-        ))}
+          );
+        })}
       </div>
       <Button className="mt-3 w-full" onClick={() => addSet(station.id, 1)}>
         <Plus size={16} /> Serie

@@ -3,7 +3,9 @@
 import { Check, Minus, Plus, Trash2 } from "lucide-react";
 import type { BlockNode, StationNode } from "@/lib/workout-tree";
 import { formatSet } from "@/lib/workout-tree";
+import { formatLoad } from "@/lib/copy";
 import { getWorkingLoad } from "@/lib/loads";
+import { lastLoggedSet } from "@/lib/metrics";
 import { useGymStore } from "@/lib/store";
 import { Button, NumberField } from "./ui";
 
@@ -17,7 +19,13 @@ function firstOpenSet(block: BlockNode) {
   return null;
 }
 
-export function CircuitBlock({ block }: { block: BlockNode }) {
+export function CircuitBlock({
+  block,
+  onLogged,
+}: {
+  block: BlockNode;
+  onLogged?: () => void;
+}) {
   const data = useGymStore();
   const updateSet = useGymStore((s) => s.updateSet);
   const toggleSetComplete = useGymStore((s) => s.toggleSetComplete);
@@ -29,6 +37,9 @@ export function CircuitBlock({ block }: { block: BlockNode }) {
     current && workout
       ? getWorkingLoad(data, workout.userId, current.station.exerciseId)
       : null;
+  const last = current && workout
+    ? lastLoggedSet(data, workout.userId, current.station.exerciseId, workout.startedAt)
+    : null;
   const nextStation: StationNode | undefined = current
     ? block.stations.find((s) => s.position === current.station.position + 1) ??
       (current.round < block.targetRounds ? block.stations[0] : undefined)
@@ -62,11 +73,18 @@ export function CircuitBlock({ block }: { block: BlockNode }) {
         <div className="rounded-xl border border-line bg-surface-2 p-3">
           <p className="text-[11px] uppercase tracking-wider text-accent">Ahora</p>
           <p className="mb-3 text-xl font-medium">{current.station.exercise.name}</p>
+          {last ? (
+            <p className="mb-3 text-xs text-muted">La vez pasada: {formatLoad(last.weightKg, last.reps)}</p>
+          ) : null}
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
               <p className="text-[11px] uppercase tracking-wider text-muted">Peso que llevas</p>
               <p className="font-mono text-lg tabular-nums">
-                {currentLoad ? `${currentLoad.weightKg} kg` : "—"}
+                {currentLoad
+                  ? `${currentLoad.weightKg} kg`
+                  : current.station.exercise.equipment === "bodyweight"
+                    ? "cuerpo"
+                    : "sin peso"}
               </p>
             </div>
             <div className="flex gap-2">
@@ -107,7 +125,10 @@ export function CircuitBlock({ block }: { block: BlockNode }) {
           <Button
             variant="primary"
             className="mt-3 w-full"
-            onClick={() => toggleSetComplete(current.set.id)}
+            onClick={() => {
+              toggleSetComplete(current.set.id);
+              onLogged?.();
+            }}
           >
             <Check size={16} /> Registrar y seguir
           </Button>
