@@ -509,13 +509,13 @@ export const useGymStore = create<GymStore>()(
     }),
     {
       name: "duo-lift-v2",
-      version: 5,
+      version: 6,
       migrate: (persistedState, fromVersion) => {
         const persisted = (persistedState ?? {}) as Partial<GymStore>;
-        const cleaned = fromVersion < 5 ? stripLegacySeed(persisted) : persisted;
+        const cleaned = fromVersion < 6 ? stripLegacySeed(persisted) : persisted;
         return {
           ...cleaned,
-          ...mergeGymData(cleaned, createSeed(), { preferSeedLoads: fromVersion < 5 }),
+          ...mergeGymData(cleaned, createSeed(), { preferSeedLoads: fromVersion < 6 }),
         };
       },
       merge: (persistedState, currentState) => {

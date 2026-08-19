@@ -39,11 +39,13 @@ export const EX = {
   gemelos: "ex-gemelos",
   militar: "ex-militar",
   jalon: "ex-jalon",
+  invertida: "ex-invertida",
   remoPolea: "ex-remo-polea",
   remoManc: "ex-remo-manc",
   remo: "ex-remo",
   dominadas: "ex-dominadas",
   curl: "ex-curl",
+  curlInclinado: "ex-curl-inclinado",
   curlCuerda: "ex-curl-cuerda",
   martillo: "ex-martillo",
   scott: "ex-scott",
@@ -93,14 +95,16 @@ const exercises: Exercise[] = [
   { id: EX.gemelos, name: "Gemelos", muscleGroup: "legs", equipment: "machine", isUnilateral: false, createdByUserId: null, duoId: null },
   { id: EX.militar, name: "Press militar", muscleGroup: "shoulders", equipment: "dumbbell", isUnilateral: false, createdByUserId: null, duoId: null },
   { id: EX.jalon, name: "Jalón al pecho", muscleGroup: "back", equipment: "cable", isUnilateral: false, createdByUserId: null, duoId: null },
+  { id: EX.invertida, name: "Invertida", muscleGroup: "back", equipment: "bodyweight", isUnilateral: false, createdByUserId: null, duoId: null },
   { id: EX.remoPolea, name: "Remo polea baja", muscleGroup: "back", equipment: "cable", isUnilateral: false, createdByUserId: null, duoId: null },
-  { id: EX.remoManc, name: "Remo con mancuerna", muscleGroup: "back", equipment: "dumbbell", isUnilateral: true, createdByUserId: null, duoId: null },
-  { id: EX.remo, name: "Remo con barra", muscleGroup: "back", equipment: "barbell", isUnilateral: false, createdByUserId: null, duoId: null },
+  { id: EX.remoManc, name: "Remo unilateral", muscleGroup: "back", equipment: "dumbbell", isUnilateral: true, createdByUserId: null, duoId: null },
+  { id: EX.remo, name: "Remo", muscleGroup: "back", equipment: "barbell", isUnilateral: false, createdByUserId: null, duoId: null },
   { id: EX.dominadas, name: "Dominadas", muscleGroup: "back", equipment: "bodyweight", isUnilateral: false, createdByUserId: null, duoId: null },
   { id: EX.curl, name: "Curl con barra", muscleGroup: "arms", equipment: "barbell", isUnilateral: false, createdByUserId: null, duoId: null },
+  { id: EX.curlInclinado, name: "Curl inclinado", muscleGroup: "arms", equipment: "dumbbell", isUnilateral: false, createdByUserId: null, duoId: null },
   { id: EX.curlCuerda, name: "Curl con cuerda", muscleGroup: "arms", equipment: "cable", isUnilateral: false, createdByUserId: null, duoId: null },
   { id: EX.martillo, name: "Martillo", muscleGroup: "arms", equipment: "dumbbell", isUnilateral: false, createdByUserId: null, duoId: null },
-  { id: EX.scott, name: "Banco Scott", muscleGroup: "arms", equipment: "other", isUnilateral: false, createdByUserId: null, duoId: null },
+  { id: EX.scott, name: "Curl predicador", muscleGroup: "arms", equipment: "other", isUnilateral: false, createdByUserId: null, duoId: null },
   { id: EX.copa, name: "Copa trasnuca", muscleGroup: "arms", equipment: "dumbbell", isUnilateral: false, createdByUserId: null, duoId: null },
   { id: EX.poleaTriceps, name: "Extensión en polea", muscleGroup: "arms", equipment: "cable", isUnilateral: false, createdByUserId: null, duoId: null },
   { id: EX.plancha, name: "Plancha", muscleGroup: "core", equipment: "bodyweight", isUnilateral: false, createdByUserId: null, duoId: null },
@@ -257,6 +261,9 @@ const gobletKg = kgFromLb(66);
 const absKg = kgFromLb(45);
 const lateralesKg = kgFromLb(25);
 const faceKg = kgFromLb(35);
+const curlIncKg = kgFromLb(20);
+const martilloKg = kgFromLb(25);
+const predicadorKg = kgFromLb(20);
 
 function circuitRounds(
   rounds: number,
@@ -359,6 +366,33 @@ function day4(userId: string, id: string): SessionSpec {
   };
 }
 
+function day5(userId: string, id: string, daysAgo = 0): SessionSpec {
+  return {
+    id,
+    userId,
+    daysAgo,
+    hour: 19,
+    title: "Espalda y bíceps",
+    rpe: 8,
+    notes: "Control_Rutinas_Gimnasio · Día 5. Jalón + invertida en biserie 12+12.",
+    items: [
+      {
+        kind: "circuit",
+        name: "Jalón + Invertida",
+        rounds: circuitRounds(3, [
+          { exerciseId: EX.jalon, kg: 45, reps: 12 },
+          { exerciseId: EX.invertida, kg: null, reps: 12 },
+        ]),
+      },
+      { exerciseId: EX.remo, sets: nTimes(3, 45, 12) },
+      { exerciseId: EX.remoManc, sets: nTimes(3, 30, 12, 12), notes: "Unilateral" },
+      { exerciseId: EX.curlInclinado, sets: nTimes(3, curlIncKg, 12), notes: "Mancuerna" },
+      { exerciseId: EX.martillo, sets: nTimes(3, martilloKg, 12), notes: "Mancuerna" },
+      { exerciseId: EX.scott, sets: nTimes(3, predicadorKg, 12), notes: "Barra EZ" },
+    ],
+  };
+}
+
 const history = buildHistory([
   day1(IDS.cristian, "w-cr-d1-prev", 7, false),
   day1(IDS.amigo, "w-am-d1-prev", 7, false),
@@ -368,8 +402,9 @@ const history = buildHistory([
   day3(IDS.amigo, "w-am-d3"),
   day2(IDS.cristian, "w-cr-d2", bancaCr, 20),
   day2(IDS.amigo, "w-am-d2", bancaAm, 25),
-  day1(IDS.cristian, "w-cr-d1", 0, true),
-  day1(IDS.amigo, "w-am-d1", 0, true),
+  day1(IDS.cristian, "w-cr-d1", 1, true),
+  day1(IDS.amigo, "w-am-d1", 1, true),
+  day5(IDS.cristian, "w-cr-d5", 0),
 ]);
 
 function load(userId: string, exerciseId: string, weightKg: number, reps: number, repsRight: number | null = null) {
@@ -394,6 +429,12 @@ const workingLoads: GymData["workingLoads"] = Object.fromEntries([
   load(IDS.cristian, EX.laterales, lateralesKg, 12),
   load(IDS.cristian, EX.frontales, lateralesKg, 12),
   load(IDS.cristian, EX.facePull, faceKg, 12),
+  load(IDS.cristian, EX.jalon, 45, 12),
+  load(IDS.cristian, EX.remo, 45, 12),
+  load(IDS.cristian, EX.remoManc, 30, 12, 12),
+  load(IDS.cristian, EX.curlInclinado, curlIncKg, 12),
+  load(IDS.cristian, EX.martillo, martilloKg, 12),
+  load(IDS.cristian, EX.scott, predicadorKg, 12),
 
   load(IDS.amigo, EX.abductores, abductoresHi, 18),
   load(IDS.amigo, EX.zancadas, zancadasKg, 12, 12),
@@ -450,7 +491,7 @@ export function createSeed(): GymData {
     reactions: [
       {
         id: "rx-am-d1-fire",
-        workoutId: "w-cr-d1",
+        workoutId: "w-cr-d5",
         fromUserId: IDS.amigo,
         kind: "fire",
         body: null,
