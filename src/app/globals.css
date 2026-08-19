@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0c0d0a;
+  --foreground: #eef2e4;
+  --surface: #151712;
+  --surface-2: #1d2016;
+  --line: #2d3224;
+  --muted: #9aa186;
+  --accent: #c8f542;
+  --accent-ink: #14180a;
+  --me: #c8f542;
+  --them: #7eb8ff;
+  --danger: #ff6b5a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-me: var(--me);
+  --color-them: var(--them);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-plex);
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+body {
+  font-family: var(--font-archivo), system-ui, sans-serif;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  appearance: textfield;
+}

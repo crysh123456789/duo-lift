@@ -1,0 +1,120 @@
+"use client";
+
+import { Check, Minus, Plus, Trash2 } from "lucide-react";
+import type { BlockNode } from "@/lib/workout-tree";
+import { getWorkingLoad } from "@/lib/loads";
+import { useGymStore } from "@/lib/store";
+import { Button, NumberField } from "./ui";
+
+export function StraightBlock({ block }: { block: BlockNode }) {
+  const data = useGymStore();
+  const station = block.stations[0];
+  const updateSet = useGymStore((s) => s.updateSet);
+  const toggleSetComplete = useGymStore((s) => s.toggleSetComplete);
+  const bumpStationWeight = useGymStore((s) => s.bumpStationWeight);
+  const addSet = useGymStore((s) => s.addSet);
+  const removeSet = useGymStore((s) => s.removeSet);
+  const removeBlock = useGymStore((s) => s.removeBlock);
+
+  if (!station) return null;
+  const unilateral = station.exercise.isUnilateral;
+  const workout = data.workouts.find((w) => w.id === block.workoutId);
+  const load = workout
+    ? getWorkingLoad(data, workout.userId, station.exerciseId)
+    : null;
+
+  return (
+    <section className="rounded-2xl border border-line bg-surface p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-muted">Ejercicio</p>
+          <h3 className="text-lg font-medium">{station.exercise.name}</h3>
+        </div>
+        <button
+          type="button"
+          onClick={() => removeBlock(block.id)}
+          className="text-muted hover:text-danger"
+          aria-label="Quitar ejercicio"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+
+      <div className="mb-3 flex items-center justify-between gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-muted">Peso que llevas</p>
+          <p className="font-mono text-xl tabular-nums">
+            {load ? `${load.weightKg} kg` : "—"}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex gap-2">
+            <Button className="h-11 w-11 px-0" onClick={() => bumpStationWeight(station.id, -2.5)}>
+              <Minus size={16} />
+            </Button>
+            <Button
+              variant="primary"
+              className="h-11 w-11 px-0"
+              onClick={() => bumpStationWeight(station.id, 2.5)}
+            >
+              <Plus size={16} />
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted">±2.5 kg</p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {station.sets.map((set, i) => (
+          <div
+            key={set.id}
+            className={`grid items-end gap-2 rounded-xl border px-2 py-2 ${
+              set.completed ? "border-accent/40 bg-accent/5" : "border-line"
+            } ${unilateral ? "grid-cols-[2rem_1fr_1fr_1fr_2.5rem]" : "grid-cols-[2rem_1fr_1fr_2.5rem]"}`}
+          >
+            <span className="pb-3 text-center font-mono text-xs text-muted">{i + 1}</span>
+            <NumberField
+              label="kg"
+              value={set.weightKg}
+              onChange={(v) => updateSet(set.id, { weightKg: v })}
+            />
+            <NumberField
+              label={unilateral ? "reps L" : "reps"}
+              value={set.reps}
+              onChange={(v) => updateSet(set.id, { reps: v })}
+            />
+            {unilateral ? (
+              <NumberField
+                label="reps R"
+                value={set.repsRight}
+                onChange={(v) => updateSet(set.id, { repsRight: v })}
+              />
+            ) : null}
+            <button
+              type="button"
+              onClick={() => toggleSetComplete(set.id)}
+              className={`mb-1 grid h-12 w-10 place-items-center rounded-xl ${
+                set.completed ? "bg-accent text-accent-ink" : "border border-line text-muted"
+              }`}
+              aria-label="Marcar serie"
+            >
+              <Check size={16} />
+            </button>
+            {station.sets.length > 1 && i === station.sets.length - 1 ? (
+              <button
+                type="button"
+                onClick={() => removeSet(set.id)}
+                className="col-span-full text-left text-[11px] text-muted hover:text-danger"
+              >
+                Quitar última serie
+              </button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <Button className="mt-3 w-full" onClick={() => addSet(station.id, 1)}>
+        <Plus size={16} /> Serie
+      </Button>
+    </section>
+  );
+}
