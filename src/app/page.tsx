@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Button, Panel } from "@/components/ui";
 import { PageTitle } from "@/components/page-title";
-import { dayLabel, relativeTime } from "@/lib/format";
+import { whenLabel, relativeTime } from "@/lib/format";
 import { foodDayFor, nextMealPrompt, todayStamp } from "@/lib/nutrition";
 import {
   formatKg,
@@ -27,7 +27,7 @@ export default function DashboardPage() {
   const inProgress = data.workouts.find(
     (w) => w.userId === data.activeUserId && w.status === "in_progress",
   );
-  const { day, kicker } = splitHeadline(data, data.activeUserId);
+  const { kicker } = splitHeadline(data, data.activeUserId);
 
   const cards = data.users.map((user) => {
     const last = lastWorkout(data, user.id);
@@ -54,9 +54,16 @@ export default function DashboardPage() {
         <p className="mt-1 text-lg">{kicker}</p>
         <Link href="/workout/new" className="mt-4 block">
           <Button variant="primary" className="h-12 w-full sm:w-auto">
-            {inProgress ? "Seguir sesión" : `Armar ${day.title.toLowerCase()}`}
+            {inProgress
+              ? `Seguir ${inProgress.title?.toLowerCase() || "sesión"}`
+              : "Entrenar"}
           </Button>
         </Link>
+        {inProgress ? (
+          <p className="mt-2 text-xs text-muted">
+            Hay una sesión sin cerrar. Si no era ese día, ábrela y elige otro.
+          </p>
+        ) : null}
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -137,7 +144,7 @@ export default function DashboardPage() {
                           <span className="text-muted"> · juntos</span>
                         </p>
                         <p className="truncate text-xs text-muted">
-                          {dayLabel(row.date)} · {names}
+                          {whenLabel(row.date)} · {names}
                         </p>
                       </div>
                       <div className="text-right">
@@ -164,7 +171,7 @@ export default function DashboardPage() {
                         {w.title ?? "Entrenamiento"}
                       </p>
                       <p className="truncate text-xs text-muted">
-                        {dayLabel(w.startedAt)} · {sessionSummary(data, w.id)}
+                        {whenLabel(w.startedAt)} · {sessionSummary(data, w.id)}
                       </p>
                     </div>
                     <div className="text-right">

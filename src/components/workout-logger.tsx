@@ -14,7 +14,12 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { getWorkingLoad } from "@/lib/loads";
 import { activeWorkout, formatKg } from "@/lib/metrics";
-import { splitExerciseIds, splitHeadline } from "@/lib/split";
+import {
+  SPLIT,
+  splitExerciseIds,
+  splitHeadline,
+  type SplitDay,
+} from "@/lib/split";
 import { useGymStore } from "@/lib/store";
 import { workoutTree, workoutVolume } from "@/lib/workout-tree";
 
@@ -26,6 +31,8 @@ export function WorkoutLogger() {
   const abandonWorkout = useGymStore((s) => s.abandonWorkout);
   const addStraightBlocks = useGymStore((s) => s.addStraightBlocks);
   const addCircuitBlock = useGymStore((s) => s.addCircuitBlock);
+  const suggested = splitHeadline(data, data.activeUserId);
+  const [pickedId, setPickedId] = useState<SplitDay["id"]>(suggested.day.id);
   const [picker, setPicker] = useState(false);
   const [circuit, setCircuit] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -36,19 +43,40 @@ export function WorkoutLogger() {
 
   const workout = activeWorkout(data, data.activeUserId);
   const tree = workout ? workoutTree(data, workout.id) : null;
-  const { day, kicker } = splitHeadline(data, data.activeUserId);
+  const day = SPLIT.find((d) => d.id === pickedId) ?? suggested.day;
 
   if (!workout || !tree) {
-    const moves = splitExerciseIds(day).map((id) => data.exercises.find((e) => e.id === id)).filter(Boolean);
+    const moves = splitExerciseIds(day)
+      .map((id) => data.exercises.find((e) => e.id === id))
+      .filter(Boolean);
     return (
       <div className="mx-auto max-w-lg space-y-5">
-        <PageTitle title={kicker} />
+        <PageTitle title={suggested.kicker} />
         <div>
           <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">Entrenar</p>
-          <h1 className="mt-2 text-3xl font-medium tracking-tight">{kicker}</h1>
+          <h1 className="mt-2 text-3xl font-medium tracking-tight">{suggested.kicker}</h1>
           <p className="mt-2 text-sm text-muted">
-            Un toque arma el día completo. El peso que llevas ya está puesto.
+            Eso es lo que sigue en el split. Si hoy toca otro grupo, elígelo y se arma ese.
           </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {SPLIT.map((item) => {
+            const on = item.id === day.id;
+            const hint = item.id === suggested.day.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setPickedId(item.id)}
+                className={`rounded-full px-3 py-1.5 text-sm ${
+                  on ? "bg-accent text-accent-ink" : "border border-line text-muted"
+                }`}
+              >
+                {item.title}
+                {hint && !on ? " · toca" : ""}
+              </button>
+            );
+          })}
         </div>
         <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
           {moves.map((ex) => {
@@ -64,11 +92,7 @@ export function WorkoutLogger() {
             );
           })}
         </ul>
-        <Button
-          variant="primary"
-          className="h-12 w-full"
-          onClick={() => startSplitDay(day.id)}
-        >
+        <Button variant="primary" className="h-12 w-full" onClick={() => startSplitDay(day.id)}>
           Armar {day.title.toLowerCase()}
         </Button>
       </div>
@@ -76,7 +100,7 @@ export function WorkoutLogger() {
   }
 
   const volume = workoutVolume(data, workout.id);
-  const heading = workout.title || "Entrenamiento";
+  const heading = workout.title || day.title || "Entrenamiento";
 
   return (
     <div className="mx-auto max-w-lg space-y-4">
@@ -113,7 +137,7 @@ export function WorkoutLogger() {
         onClick={() => void abandonWorkout(workout.id)}
         className="w-full text-center text-xs text-muted hover:text-danger"
       >
-        Descartar sesión
+        No era este día · elegir otro
       </button>
 
       {picker ? (
@@ -182,7 +206,7 @@ export function WorkoutLogger() {
                   className="flex-1"
                   onClick={() => {
                     finishWorkout(workout.id, {
-                      title: title || heading,
+                      title: title.trim(),
                       notes,
                       perceivedExertion: rpe,
                     });

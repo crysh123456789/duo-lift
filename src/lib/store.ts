@@ -6,7 +6,7 @@ import { IDS, nid } from "./ids";
 import { bumpKg, getWorkingLoad, loadKey } from "./loads";
 import { createSeed, mergeGymData, stripLegacySeed } from "./seed";
 import { duoUnlocked } from "./session-flag";
-import { SPLIT, type SplitDay } from "./split";
+import { inferSplitDay, splitDayByTitle, SPLIT, type SplitDay } from "./split";
 import type {
   Exercise,
   GymData,
@@ -121,15 +121,23 @@ export const useGymStore = create<GymStore>()(
       startSplitDay: (dayId) => {
         if (!duoUnlocked()) return "";
         const day = SPLIT.find((d) => d.id === dayId) ?? SPLIT[0]!;
+        const prior = get();
+        const existing = prior.workouts.find(
+          (w) => w.userId === prior.activeUserId && w.status === "in_progress",
+        );
+        if (existing) {
+          const current =
+            inferSplitDay(prior, existing) ?? splitDayByTitle(existing.title);
+          if (current?.id === day.id) return existing.id;
+          get().abandonWorkout(existing.id);
+        }
         const id = get().startWorkout();
-        const treeNow = get();
-        const already = treeNow.blocks.some((b) => b.workoutId === id);
+        if (!id) return "";
         set((state) => ({
           workouts: state.workouts.map((w) =>
-            w.id === id ? { ...w, title: w.title || day.title } : w,
+            w.id === id ? { ...w, title: day.title } : w,
           ),
         }));
-        if (already) return id;
         for (const circuit of day.circuits) {
           get().addCircuitBlock(id, {
             name: circuit.name,
@@ -143,20 +151,29 @@ export const useGymStore = create<GymStore>()(
 
       finishWorkout: (workoutId, payload) => {
         if (!duoUnlocked()) return;
-        set((state) => ({
-          workouts: state.workouts.map((w) =>
-            w.id === workoutId
-              ? {
-                  ...w,
-                  status: "completed",
-                  endedAt: new Date().toISOString(),
-                  title: payload?.title?.trim() || w.title || "Entrenamiento",
-                  notes: payload?.notes?.trim() || w.notes,
-                  perceivedExertion: payload?.perceivedExertion ?? w.perceivedExertion,
-                }
-              : w,
-          ),
-        }));
+        set((state) => {
+          const current = state.workouts.find((w) => w.id === workoutId);
+          if (!current) return {};
+          const inferred = inferSplitDay(state, current);
+          return {
+            workouts: state.workouts.map((w) =>
+              w.id === workoutId
+                ? {
+                    ...w,
+                    status: "completed" as const,
+                    endedAt: new Date().toISOString(),
+                    title:
+                      payload?.title?.trim() ||
+                      inferred?.title ||
+                      w.title ||
+                      "Entrenamiento",
+                    notes: payload?.notes?.trim() || w.notes,
+                    perceivedExertion: payload?.perceivedExertion ?? w.perceivedExertion,
+                  }
+                : w,
+            ),
+          };
+        });
       },
 
       abandonWorkout: (workoutId) =>

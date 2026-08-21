@@ -5,7 +5,7 @@ import { useState } from "react";
 import { LoadBoard } from "@/components/load-board";
 import { PageTitle } from "@/components/page-title";
 import { formatKg, sessionSummary } from "@/lib/metrics";
-import { dayLabel } from "@/lib/format";
+import { whenLabel } from "@/lib/format";
 import { personName } from "@/lib/people";
 import { groupDuoSessions } from "@/lib/session-groups";
 import { useGymStore } from "@/lib/store";
@@ -21,6 +21,12 @@ export default function HistoryPage() {
   const otherName = personName(other);
   const [person, setPerson] = useState<"both" | "me" | "them">("both");
 
+  const open = data.workouts.filter((w) => {
+    if (w.status !== "in_progress") return false;
+    if (person === "me") return w.userId === data.activeUserId;
+    if (person === "them") return w.userId !== data.activeUserId;
+    return true;
+  });
   const filtered = data.workouts.filter((w) => {
     if (w.status !== "completed") return false;
     if (person === "me") return w.userId === data.activeUserId;
@@ -80,10 +86,32 @@ export default function HistoryPage() {
               </button>
             ))}
           </div>
-          {rows.length === 0 ? (
+          {open.length === 0 && rows.length === 0 ? (
             <p className="text-sm text-muted">Todavía no hay sesiones cerradas.</p>
           ) : (
             <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+              {open.map((w) => {
+                const user = data.users.find((u) => u.id === w.userId);
+                return (
+                  <li key={w.id}>
+                    <Link
+                      href="/workout/new"
+                      className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate">
+                          {w.title ?? "Entrenamiento"}
+                          <span className="text-muted"> · en curso</span>
+                        </p>
+                        <p className="truncate text-xs text-muted">
+                          {whenLabel(w.startedAt)} · {personName(user)}
+                        </p>
+                      </div>
+                      <p className="text-xs text-accent">Seguir</p>
+                    </Link>
+                  </li>
+                );
+              })}
               {rows.map((row) => {
                 if (row.kind === "pair" && person === "both") {
                   const vol = row.workouts.reduce((sum, w) => sum + workoutVolume(data, w.id), 0);
@@ -98,7 +126,7 @@ export default function HistoryPage() {
                             {row.title}
                             <span className="text-muted"> · juntos</span>
                           </p>
-                          <p className="truncate text-xs text-muted">{dayLabel(row.date)}</p>
+                          <p className="truncate text-xs text-muted">{whenLabel(row.date)}</p>
                         </div>
                         <p className="font-mono text-sm tabular-nums">{formatKg(vol)} kg</p>
                       </Link>
@@ -121,7 +149,7 @@ export default function HistoryPage() {
                           <span className="text-muted"> · {personName(user)}</span>
                         </p>
                         <p className="truncate text-xs text-muted">
-                          {dayLabel(w.startedAt)} · {sessionSummary(data, w.id)}
+                          {whenLabel(w.startedAt)} · {sessionSummary(data, w.id)}
                         </p>
                       </div>
                       <p className="font-mono text-sm tabular-nums">

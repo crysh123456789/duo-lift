@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { PageTitle } from "@/components/page-title";
 import { Button, Field, Panel } from "@/components/ui";
-import { dayFull } from "@/lib/format";
+import { dayFull, whenLabel } from "@/lib/format";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { personName } from "@/lib/people";
@@ -48,7 +48,7 @@ export default function WorkoutDetailPage() {
         </p>
         <h1 className="text-3xl font-medium tracking-tight">{tree.title ?? "Entrenamiento"}</h1>
         <p className="mt-1 text-sm text-muted">
-          {dayFull(tree.startedAt)} · {Math.round(workoutVolume(data, tree.id))} kg
+          {whenLabel(tree.startedAt)} · {dayFull(tree.startedAt)} · {Math.round(workoutVolume(data, tree.id))} kg
           {tree.perceivedExertion ? ` · RPE ${tree.perceivedExertion}` : ""}
         </p>
       </div>

@@ -12,7 +12,8 @@ import {
 } from "recharts";
 import { PageTitle } from "@/components/page-title";
 import { EX } from "@/lib/seed";
-import { bestWeight, formatKg, volumeLastDays, weeklyVolume } from "@/lib/metrics";
+import { bestWeight, formatKg, lastWorkout, volumeLastDays, weeklyVolume } from "@/lib/metrics";
+import { whenLabel } from "@/lib/format";
 import { personName } from "@/lib/people";
 import { useGymStore } from "@/lib/store";
 
@@ -35,6 +36,7 @@ export default function StatsPage() {
   const data = useGymStore();
   const volume = weeklyVolume(data, 4);
   const thisWeek = volume[volume.length - 1];
+  const mine = lastWorkout(data, data.activeUserId);
 
   return (
     <div className="space-y-8">
@@ -44,6 +46,9 @@ export default function StatsPage() {
         <h1 className="text-3xl font-medium tracking-tight">Esta semana</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
           Volumen de los dos y las alzas que importan: banca, hack y prensa.
+          {mine
+            ? ` Último entreno: ${whenLabel(mine.startedAt)} · ${mine.title ?? "sesión"}.`
+            : ""}
         </p>
       </div>
 

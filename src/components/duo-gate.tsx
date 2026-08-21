@@ -33,10 +33,11 @@ export function DuoGate({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (!state || login) {
-      setDuoUnlocked(login);
+    if (login) {
+      setDuoUnlocked(true);
       return;
     }
+    if (!state) return;
     if (state.configured && !state.ok) {
       setDuoUnlocked(false);
       router.replace("/login");
