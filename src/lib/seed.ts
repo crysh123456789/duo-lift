@@ -317,15 +317,17 @@ function day2(userId: string, id: string, bancaKg: number, aperturaKg: number): 
     id,
     userId,
     daysAgo: 2,
-    title: "Pecho",
+    title: "Pecho y tríceps",
     rpe: 7,
-    notes: "Presses y aperturas. Fondos a cuerpo.",
+    notes: "Presses, aperturas, fondos y tríceps.",
     items: [
       { exerciseId: EX.banca, sets: nTimes(3, bancaKg, 12) },
       { exerciseId: EX.declinado, sets: nTimes(3, bancaKg, 12) },
       { exerciseId: EX.inclinada, sets: nTimes(3, inclinadoKg, 12), notes: "Mancuerna" },
       { exerciseId: EX.fondos, sets: nTimes(3, null, 12), notes: "Peso corporal" },
       { exerciseId: EX.aperturas, sets: nTimes(3, aperturaKg, 12), notes: "Con cuerda" },
+      { exerciseId: EX.poleaTriceps, sets: nTimes(3, 20, 12), notes: "Polea" },
+      { exerciseId: EX.copa, sets: nTimes(3, 12.5, 12), notes: "Mancuerna" },
     ],
   };
 }

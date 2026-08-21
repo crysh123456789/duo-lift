@@ -35,9 +35,17 @@ export const SPLIT: SplitDay[] = [
   },
   {
     id: "pecho",
-    title: "Pecho",
+    title: "Pecho y tríceps",
     circuits: [],
-    straightIds: [EX.banca, EX.declinado, EX.inclinada, EX.fondos, EX.aperturas],
+    straightIds: [
+      EX.banca,
+      EX.declinado,
+      EX.inclinada,
+      EX.fondos,
+      EX.aperturas,
+      EX.poleaTriceps,
+      EX.copa,
+    ],
   },
   {
     id: "gluteos",
@@ -72,7 +80,16 @@ export function splitExerciseIds(day: SplitDay): string[] {
 export function splitDayByTitle(title: string | null | undefined): SplitDay | null {
   if (!title?.trim()) return null;
   const needle = title.trim().toLowerCase();
-  return SPLIT.find((d) => d.title.toLowerCase() === needle) ?? null;
+  const exact = SPLIT.find((d) => d.title.toLowerCase() === needle);
+  if (exact) return exact;
+  return (
+    SPLIT.find(
+      (d) =>
+        d.title.toLowerCase().startsWith(`${needle} `) ||
+        d.title.toLowerCase().startsWith(`${needle} y`) ||
+        needle.startsWith(d.title.toLowerCase().split(" y ")[0] ?? ""),
+    ) ?? null
+  );
 }
 
 export function inferSplitDay(data: GymData, workout: Workout): SplitDay | null {

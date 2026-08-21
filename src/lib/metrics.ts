@@ -5,6 +5,8 @@ import {
   subWeeks,
 } from "date-fns";
 import { es } from "date-fns/locale";
+import { whenLabel } from "./format";
+import { todayStamp } from "./nutrition";
 import type { GymData } from "./types";
 import { workoutTree, workoutVolume } from "./workout-tree";
 
@@ -36,6 +38,57 @@ export function weeklyVolume(data: GymData, weekCount = 4) {
   );
   if (firstData <= 0) return rows;
   return rows.slice(firstData);
+}
+
+export function dailyVolume(data: GymData, dayCount = 14) {
+  const rows = Array.from({ length: dayCount }, (_, i) => {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() - (dayCount - 1 - i));
+    const stamp = todayStamp(d);
+    const volumes: Record<string, number> = {};
+    for (const user of data.users) volumes[user.id] = 0;
+    for (const w of data.workouts) {
+      if (w.status === "abandoned") continue;
+      if (todayStamp(new Date(w.startedAt)) !== stamp) continue;
+      const draft = w.status === "in_progress";
+      volumes[w.userId] = (volumes[w.userId] ?? 0) + workoutVolume(data, w.id, { draft });
+    }
+    const row: Record<string, string | number> = {
+      label: whenLabel(d.toISOString()),
+      stamp,
+    };
+    for (const user of data.users) {
+      row[user.id] = Math.round(volumes[user.id] ?? 0);
+    }
+    return row;
+  });
+  const firstData = rows.findIndex((row) =>
+    data.users.some((user) => Number(row[user.id] ?? 0) > 0),
+  );
+  if (firstData < 0) return rows.slice(-4);
+  return rows.slice(firstData);
+}
+
+export function lastOpenOrCompleted(data: GymData, userId: string) {
+  return activeWorkout(data, userId) ?? lastWorkout(data, userId);
+}
+
+export function workoutLifts(data: GymData, workoutId: string) {
+  const tree = workoutTree(data, workoutId);
+  if (!tree) return [];
+  return tree.blocks.flatMap((block) =>
+    block.stations.map((station) => {
+      const sets = station.sets.filter((s) => !s.isWarmup && (s.weightKg != null || s.reps != null));
+      const best = [...sets].sort((a, b) => (b.weightKg ?? 0) - (a.weightKg ?? 0))[0];
+      return {
+        id: station.id,
+        name: station.exercise.name,
+        weightKg: best?.weightKg ?? null,
+        reps: best?.reps ?? null,
+      };
+    }),
+  );
 }
 
 export function maxWeightHistory(data: GymData, exerciseId: string) {

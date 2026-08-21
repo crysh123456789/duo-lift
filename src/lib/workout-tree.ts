@@ -45,21 +45,22 @@ export function workoutTree(data: GymData, workoutId: string): WorkoutTree | nul
   return { ...workout, blocks };
 }
 
-export function setVolume(set: SetLog): number {
-  if (!set.completed || set.weightKg == null) return 0;
+export function setVolume(set: SetLog, opts?: { draft?: boolean }): number {
+  const usable = opts?.draft ? set.weightKg != null && !set.isWarmup : set.completed && set.weightKg != null;
+  if (!usable || set.weightKg == null) return 0;
   const left = set.reps ?? 0;
   const right = set.repsRight ?? 0;
   const reps = right > 0 ? left + right : left;
   return set.weightKg * reps;
 }
 
-export function workoutVolume(data: GymData, workoutId: string): number {
+export function workoutVolume(data: GymData, workoutId: string, opts?: { draft?: boolean }): number {
   const tree = workoutTree(data, workoutId);
   if (!tree) return 0;
   return tree.blocks
     .flatMap((b) => b.stations)
     .flatMap((s) => s.sets)
-    .reduce((sum, set) => sum + setVolume(set), 0);
+    .reduce((sum, set) => sum + setVolume(set, opts), 0);
 }
 
 export function formatSet(set: SetLog): string {

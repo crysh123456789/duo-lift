@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Bar,
   BarChart,
@@ -12,7 +13,16 @@ import {
 } from "recharts";
 import { PageTitle } from "@/components/page-title";
 import { EX } from "@/lib/seed";
-import { bestWeight, formatKg, lastWorkout, volumeLastDays, weeklyVolume } from "@/lib/metrics";
+import { formatLoad } from "@/lib/copy";
+import {
+  bestWeight,
+  dailyVolume,
+  formatKg,
+  lastOpenOrCompleted,
+  volumeLastDays,
+  weeklyVolume,
+  workoutLifts,
+} from "@/lib/metrics";
 import { whenLabel } from "@/lib/format";
 import { personName } from "@/lib/people";
 import { useGymStore } from "@/lib/store";
@@ -34,23 +44,56 @@ const LIFTS = [
 
 export default function StatsPage() {
   const data = useGymStore();
+  const days = dailyVolume(data, 14);
   const volume = weeklyVolume(data, 4);
   const thisWeek = volume[volume.length - 1];
-  const mine = lastWorkout(data, data.activeUserId);
+  const latest = lastOpenOrCompleted(data, data.activeUserId);
+  const lifts = latest ? workoutLifts(data, latest.id) : [];
+  const open = latest?.status === "in_progress";
 
   return (
     <div className="space-y-8">
       <PageTitle title="Progreso" />
       <div>
         <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">Progreso</p>
-        <h1 className="text-3xl font-medium tracking-tight">Esta semana</h1>
+        <h1 className="text-3xl font-medium tracking-tight">
+          {latest ? `${latest.title ?? "Entrenamiento"} · ${whenLabel(latest.startedAt)}` : "Esta semana"}
+        </h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Volumen de los dos y las alzas que importan: banca, hack y prensa.
-          {mine
-            ? ` Último entreno: ${whenLabel(mine.startedAt)} · ${mine.title ?? "sesión"}.`
-            : ""}
+          Lo que acabas de mover, día a día, y las alzas grandes.
         </p>
       </div>
+
+      {latest ? (
+        <section>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <h2 className="text-sm font-medium">
+              {open ? "Sesión de hoy (aún abierta)" : "Última sesión"}
+            </h2>
+            {open ? (
+              <Link href="/workout/new" className="text-xs text-accent">
+                Seguir y guardar
+              </Link>
+            ) : null}
+          </div>
+          {lifts.length === 0 ? (
+            <p className="text-sm text-muted">Todavía no hay ejercicios en esa sesión.</p>
+          ) : (
+            <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+              {lifts.map((lift) => (
+                <li key={lift.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <p className="text-sm">{lift.name}</p>
+                  <p className="font-mono text-sm tabular-nums text-muted">
+                    {lift.weightKg == null && lift.reps == null
+                      ? "sin peso aún"
+                      : formatLoad(lift.weightKg, lift.reps)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
       <section className="grid gap-3 md:grid-cols-2">
         {data.users.map((user, i) => {
@@ -71,11 +114,11 @@ export default function StatsPage() {
       </section>
 
       <section>
-        <h2 className="mb-1 text-sm font-medium">Volumen semanal (kg)</h2>
-        <p className="mb-3 text-xs text-muted">Semanas con dato, lunes a domingo.</p>
+        <h2 className="mb-1 text-sm font-medium">Volumen por día (kg)</h2>
+        <p className="mb-3 text-xs text-muted">Incluye lo de hoy. Días vacíos se recortan.</p>
         <div className="h-64 rounded-2xl border border-line bg-surface p-3">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={volume}>
+            <BarChart data={days}>
               <CartesianGrid stroke="#2d3224" vertical={false} />
               <XAxis dataKey="label" stroke="#9aa186" fontSize={11} tickLine={false} axisLine={false} />
               <YAxis stroke="#9aa186" fontSize={11} tickLine={false} axisLine={false} />
