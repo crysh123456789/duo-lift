@@ -79,6 +79,8 @@ export type Workout = {
   duoId: string;
   startedAt: string;
   endedAt: string | null;
+  /** Client clock for sync. A date correction must beat an older startedAt. */
+  updatedAt?: string;
   status: WorkoutStatus;
   notes: string | null;
   perceivedExertion: number | null;

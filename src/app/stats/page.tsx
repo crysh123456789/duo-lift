@@ -24,6 +24,7 @@ import {
   workoutLifts,
 } from "@/lib/metrics";
 import { whenLabel } from "@/lib/format";
+import { isSameSessionDay, staleOpenWorkout, unclosedBadge } from "@/lib/session-date";
 import { personName } from "@/lib/people";
 import { useGymStore } from "@/lib/store";
 
@@ -48,6 +49,7 @@ export default function StatsPage() {
   const volume = weeklyVolume(data, 4);
   const thisWeek = volume[volume.length - 1];
   const latest = lastOpenOrCompleted(data, data.activeUserId);
+  const stale = staleOpenWorkout(data.workouts, data.activeUserId);
   const lifts = latest ? workoutLifts(data, latest.id) : [];
   const open = latest?.status === "in_progress";
 
@@ -62,16 +64,28 @@ export default function StatsPage() {
         <p className="mt-2 max-w-xl text-sm text-muted">
           Lo que acabas de mover, día a día, y las alzas grandes.
         </p>
+        {stale && stale.id !== latest?.id ? (
+          <p className="mt-2 text-sm text-accent">
+            {stale.title ?? "Entrenamiento"} · {unclosedBadge(stale.startedAt)}
+          </p>
+        ) : null}
       </div>
 
       {latest ? (
         <section>
           <div className="mb-3 flex items-end justify-between gap-3">
             <h2 className="text-sm font-medium">
-              {open ? "Sesión de hoy (aún abierta)" : "Última sesión"}
+              {open && latest ? unclosedBadge(latest.startedAt) : "Última sesión"}
             </h2>
-            {open ? (
-              <Link href="/workout/new" className="text-xs text-accent">
+            {open && latest ? (
+              <Link
+                href={
+                  isSameSessionDay(latest.startedAt)
+                    ? "/workout/new"
+                    : `/workout/new?seguir=${latest.id}`
+                }
+                className="min-h-11 text-xs text-accent"
+              >
                 Seguir y guardar
               </Link>
             ) : null}
@@ -115,7 +129,9 @@ export default function StatsPage() {
 
       <section>
         <h2 className="mb-1 text-sm font-medium">Volumen por día (kg)</h2>
-        <p className="mb-3 text-xs text-muted">Incluye lo de hoy. Días vacíos se recortan.</p>
+        <p className="mb-3 text-xs text-muted">
+          Cada día usa la fecha de la sesión, también si sigue sin cerrar.
+        </p>
         <div className="h-64 rounded-2xl border border-line bg-surface p-3">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={days}>

@@ -6,6 +6,7 @@ import { LoadBoard } from "@/components/load-board";
 import { PageTitle } from "@/components/page-title";
 import { formatKg, sessionSummary } from "@/lib/metrics";
 import { whenLabel } from "@/lib/format";
+import { unclosedBadge } from "@/lib/session-date";
 import { personName } from "@/lib/people";
 import { groupDuoSessions } from "@/lib/session-groups";
 import { useGymStore } from "@/lib/store";
@@ -95,17 +96,17 @@ export default function HistoryPage() {
                 return (
                   <li key={w.id}>
                     <Link
-                      href="/workout/new"
+                      href={
+                        w.userId === data.activeUserId
+                          ? `/workout/new?seguir=${w.id}`
+                          : `/workout/${w.id}`
+                      }
                       className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface"
                     >
                       <div className="min-w-0">
-                        <p className="truncate">
-                          {w.title ?? "Entrenamiento"}
-                          <span className="text-muted"> · en curso</span>
-                        </p>
-                        <p className="truncate text-xs text-muted">
-                          {whenLabel(w.startedAt)} · {personName(user)}
-                        </p>
+                        <p className="truncate">{w.title ?? "Entrenamiento"}</p>
+                        <p className="mt-1 text-xs text-accent">{unclosedBadge(w.startedAt)}</p>
+                        <p className="truncate text-xs text-muted">{personName(user)}</p>
                       </div>
                       <p className="text-xs text-accent">Seguir</p>
                     </Link>

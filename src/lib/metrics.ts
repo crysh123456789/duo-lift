@@ -7,6 +7,7 @@ import {
 import { es } from "date-fns/locale";
 import { whenLabel } from "./format";
 import { todayStamp } from "./nutrition";
+import { staleOpenWorkout, todayOpenWorkout } from "./session-date";
 import type { GymData } from "./types";
 import { workoutTree, workoutVolume } from "./workout-tree";
 
@@ -40,9 +41,9 @@ export function weeklyVolume(data: GymData, weekCount = 4) {
   return rows.slice(firstData);
 }
 
-export function dailyVolume(data: GymData, dayCount = 14) {
+export function dailyVolume(data: GymData, dayCount = 14, now = new Date()) {
   const rows = Array.from({ length: dayCount }, (_, i) => {
-    const d = new Date();
+    const d = new Date(now);
     d.setHours(12, 0, 0, 0);
     d.setDate(d.getDate() - (dayCount - 1 - i));
     const stamp = todayStamp(d);
@@ -55,7 +56,7 @@ export function dailyVolume(data: GymData, dayCount = 14) {
       volumes[w.userId] = (volumes[w.userId] ?? 0) + workoutVolume(data, w.id, { draft });
     }
     const row: Record<string, string | number> = {
-      label: whenLabel(d.toISOString()),
+      label: whenLabel(d.toISOString(), now),
       stamp,
     };
     for (const user of data.users) {
@@ -70,8 +71,12 @@ export function dailyVolume(data: GymData, dayCount = 14) {
   return rows.slice(firstData);
 }
 
-export function lastOpenOrCompleted(data: GymData, userId: string) {
-  return activeWorkout(data, userId) ?? lastWorkout(data, userId);
+export function lastOpenOrCompleted(data: GymData, userId: string, now = new Date()) {
+  return (
+    todayOpenWorkout(data.workouts, userId, now) ??
+    staleOpenWorkout(data.workouts, userId, now) ??
+    lastWorkout(data, userId)
+  );
 }
 
 export function workoutLifts(data: GymData, workoutId: string) {
@@ -158,8 +163,9 @@ export function lastWorkout(data: GymData, userId: string) {
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
 }
 
-export function activeWorkout(data: GymData, userId: string) {
-  return data.workouts.find((w) => w.userId === userId && w.status === "in_progress");
+/** In-progress session dated today. A leftover from another day is not today's workout. */
+export function activeWorkout(data: GymData, userId: string, now = new Date()) {
+  return todayOpenWorkout(data.workouts, userId, now);
 }
 
 export function exercisesWithLogs(data: GymData) {
