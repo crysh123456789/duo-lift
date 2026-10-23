@@ -3,6 +3,7 @@ import { Archivo, IBM_Plex_Mono } from "next/font/google";
 import { AppShell } from "@/components/app-shell";
 import { DuoGate } from "@/components/duo-gate";
 import { HydrateGate } from "@/components/hydrate-gate";
+import { SyncProvider } from "@/components/sync-provider";
 import "./globals.css";
 
 const archivo = Archivo({
@@ -48,7 +49,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full bg-background font-sans text-foreground">
         <DuoGate>
           <HydrateGate>
-            <AppShell>{children}</AppShell>
+            <SyncProvider>
+              <AppShell>{children}</AppShell>
+            </SyncProvider>
           </HydrateGate>
         </DuoGate>
       </body>

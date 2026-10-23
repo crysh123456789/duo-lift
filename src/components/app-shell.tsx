@@ -13,6 +13,7 @@ import {
 import { personInitial, personName } from "@/lib/people";
 import { useGymStore } from "@/lib/store";
 import { ReminderWatcher } from "./reminder-watcher";
+import { SyncStatus } from "./sync-status";
 import { Avatar } from "./ui";
 
 const NAV = [
@@ -35,12 +36,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-dvh bg-background text-foreground">
       <header className="sticky top-0 z-30 border-b border-line bg-background/90 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 md:pl-56">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="grid h-7 w-7 place-items-center rounded-md border border-accent/40 font-mono text-[10px] text-accent">
-              {users.map((u) => personInitial(u)).join("") || "DL"}
-            </span>
-            <p className="font-mono text-[11px] tracking-[0.28em] text-accent uppercase">Duo Lift</p>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-2">
+              <span className="grid h-7 w-7 place-items-center rounded-md border border-accent/40 font-mono text-[10px] text-accent">
+                {users.map((u) => personInitial(u)).join("") || "DL"}
+              </span>
+              <p className="font-mono text-[11px] tracking-[0.28em] text-accent uppercase">Duo Lift</p>
+            </Link>
+            <SyncStatus />
+          </div>
           <div className="flex items-center gap-1 rounded-full border border-line bg-surface p-1">
             {users.map((user, i) => {
               const on = user.id === activeUserId;

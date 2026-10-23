@@ -16,6 +16,22 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Supabase sync
+
+The gym log stays in Zustand (`duo-lift-v2`) and, when sync is enabled, also upserts into the Duo Lift Supabase project (`https://xivctpewomnpzcgbvczv.supabase.co`, region `sa-east-1`).
+
+Copy `.env.example` to `.env.local`. On Vercel set:
+
+| Variable | Where |
+| --- | --- |
+| `DUO_LIFT_PASSWORD` | Server. Shared duo password. Required before sync can turn on. |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://xivctpewomnpzcgbvczv.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Legacy anon JWT. Public by design. `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is accepted if the anon key is empty. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only. Bypasses RLS. Never prefix it with `NEXT_PUBLIC_`. |
+| `DUO_LIFT_SYNC_ENABLED` | `false` until Seguridad reviews `supabase/migrations/0002_duo_local_sync.sql`. `true` hydrates from Supabase and uploads this browser's localStorage. |
+
+Apply `supabase/migrations/0001_init.sql` through `0004_detach_custom_exercise_stations.sql` before enabling the flag. On project `xivctpewomnpzcgbvczv` those migrations are already applied. Anon and authenticated have no table grants; the draft policies are for review, not for production writes.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
