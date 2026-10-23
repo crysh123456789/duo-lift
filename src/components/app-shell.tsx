@@ -10,6 +10,7 @@ import {
   UserRound,
   Utensils,
 } from "lucide-react";
+import { isAuthScreen } from "@/lib/auth/paths";
 import { personInitial, personName } from "@/lib/people";
 import { useGymStore } from "@/lib/store";
 import { ReminderWatcher } from "./reminder-watcher";
@@ -31,7 +32,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const me = users.find((user) => user.id === activeUserId);
   const name = personName(me);
 
-  if (pathname === "/login" || pathname === "/signup" || pathname === "/claim") return <>{children}</>;
+  if (isAuthScreen(pathname) || pathname === "/claim") return <>{children}</>;
 
   return (
     <div className="min-h-dvh bg-background text-foreground">

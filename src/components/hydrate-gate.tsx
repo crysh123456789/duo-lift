@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore, type ReactNode } from "react";
+import { isAuthScreen } from "@/lib/auth/paths";
 import { useGymStore } from "@/lib/store";
 
 function subscribeHydration(onChange: () => void) {
@@ -16,7 +17,7 @@ export function HydrateGate({ children }: { children: ReactNode }) {
     () => false,
   );
 
-  if (pathname === "/login" || pathname === "/signup") return children;
+  if (isAuthScreen(pathname)) return children;
 
   if (!ready) {
     return (

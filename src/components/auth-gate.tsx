@@ -1,6 +1,7 @@
 "use client";
 
 import { settleSignedInUser } from "@/lib/auth/enter";
+import { isAuthScreen } from "@/lib/auth/paths";
 import {
   getAuthEpoch,
   getAuthError,
@@ -26,7 +27,7 @@ function Splash() {
 export function AuthGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const authPage = pathname === "/login" || pathname === "/signup";
+  const authPage = isAuthScreen(pathname);
   const phase = useSyncExternalStore(subscribeAuthPhase, getAuthPhase, () => "boot" as const);
   const error = useSyncExternalStore(subscribeAuthPhase, getAuthError, () => "");
 

@@ -94,6 +94,11 @@ function LoginForm() {
             {busy ? "Entrando…" : "Entrar"}
           </Button>
           <p className="text-center text-sm text-muted">
+            <Link href="/forgot" className="text-accent">
+              ¿Olvidaste tu contraseña?
+            </Link>
+          </p>
+          <p className="text-center text-sm text-muted">
             <Link href="/signup" className="text-accent">
               Crear cuenta
             </Link>
