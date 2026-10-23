@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { PageTitle } from "@/components/page-title";
+import { SessionDateField } from "@/components/session-date-field";
 import { Button, Field, Panel } from "@/components/ui";
 import { dayFull, whenLabel } from "@/lib/format";
+import { DATE_UPDATED, sessionStamp, unclosedBadge } from "@/lib/session-date";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { personName } from "@/lib/people";
@@ -16,8 +18,10 @@ export default function WorkoutDetailPage() {
   const params = useParams<{ id: string }>();
   const data = useGymStore();
   const addReaction = useGymStore((s) => s.addReaction);
+  const setWorkoutDate = useGymStore((s) => s.setWorkoutDate);
   const [comment, setComment] = useState("");
   const tree = workoutTree(data, params.id);
+  const [dateNotice, setDateNotice] = useState("");
 
   if (!tree) {
     return (
@@ -51,7 +55,21 @@ export default function WorkoutDetailPage() {
           {whenLabel(tree.startedAt)} · {dayFull(tree.startedAt)} · {Math.round(workoutVolume(data, tree.id))} kg
           {tree.perceivedExertion ? ` · RPE ${tree.perceivedExertion}` : ""}
         </p>
+        {tree.status === "in_progress" ? (
+          <p className="mt-2 text-xs text-accent">{unclosedBadge(tree.startedAt)}</p>
+        ) : null}
       </div>
+
+      {isMine ? (
+        <SessionDateField
+          value={sessionStamp(tree.startedAt)}
+          notice={dateNotice}
+          onChange={(next) => {
+            if (!setWorkoutDate(tree.id, next)) return;
+            setDateNotice(DATE_UPDATED);
+          }}
+        />
+      ) : null}
 
       {tree.blocks.map((block) => (
         <Panel key={block.id} className="p-4">

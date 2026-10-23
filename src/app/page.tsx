@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { UnclosedSessionCard } from "@/components/unclosed-session";
 import { Panel } from "@/components/ui";
 import { PageTitle } from "@/components/page-title";
 import { whenLabel, relativeTime } from "@/lib/format";
@@ -14,6 +16,7 @@ import {
 } from "@/lib/metrics";
 import { personName } from "@/lib/people";
 import { groupDuoSessions } from "@/lib/session-groups";
+import { DATE_UPDATED, homeTrainCta, staleOpenWorkouts } from "@/lib/session-date";
 import { splitHeadline } from "@/lib/split";
 import { useGymStore } from "@/lib/store";
 import { workoutVolume } from "@/lib/workout-tree";
@@ -22,11 +25,11 @@ const PALETTE = ["var(--me)", "var(--them)"];
 
 export default function DashboardPage() {
   const data = useGymStore();
+  const [dateNotice, setDateNotice] = useState("");
   const me = data.users.find((u) => u.id === data.activeUserId);
   const myName = personName(me) || "tú";
-  const inProgress = data.workouts.find(
-    (w) => w.userId === data.activeUserId && w.status === "in_progress",
-  );
+  const stale = staleOpenWorkouts(data.workouts, data.activeUserId);
+  const cta = homeTrainCta(data.workouts, data.activeUserId);
   const { kicker } = splitHeadline(data, data.activeUserId);
 
   const cards = data.users.map((user) => {
@@ -52,16 +55,29 @@ export default function DashboardPage() {
         <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">Inicio</p>
         <h1 className="text-3xl font-medium tracking-tight">Hola, {myName}</h1>
         <p className="mt-1 text-lg">{kicker}</p>
-        <Link
-          href="/workout/new"
-          className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-xl bg-accent px-4 text-sm font-medium text-accent-ink transition-colors hover:bg-accent/90 sm:w-auto"
-        >
-          {inProgress ? `Seguir ${inProgress.title?.toLowerCase() || "sesión"}` : "Entrenar"}
-        </Link>
-        {inProgress ? (
-          <p className="mt-2 text-xs text-muted">
-            Hay una sesión sin cerrar. Si no era ese día, ábrela y elige otro.
+        {dateNotice && stale.length === 0 ? (
+          <p className="mt-3 text-sm text-accent" role="status">
+            {dateNotice}
           </p>
+        ) : null}
+        {cta ? (
+          <Link
+            href="/workout/new"
+            className="mt-4 inline-flex h-12 min-h-12 w-full items-center justify-center rounded-xl bg-accent px-4 text-sm font-medium text-accent-ink transition-colors hover:bg-accent/90 sm:w-auto"
+          >
+            {cta}
+          </Link>
+        ) : null}
+        {stale.length > 0 ? (
+          <div className="mt-4 max-w-lg space-y-3">
+            {stale.map((workout) => (
+              <UnclosedSessionCard
+                key={workout.id}
+                workout={workout}
+                onDateUpdated={() => setDateNotice(DATE_UPDATED)}
+              />
+            ))}
+          </div>
         ) : null}
       </div>
 

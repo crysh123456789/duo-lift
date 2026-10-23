@@ -1,4 +1,5 @@
 import { createSeed } from "@/lib/seed";
+import { workoutClock } from "@/lib/session-date";
 import type { FoodDay, GymData, ReminderSettings } from "@/lib/types";
 import { canonicalize, normalizeReminders, sameSnapshot } from "./snapshot";
 import { sameValue, stableStringify } from "./stable";
@@ -169,7 +170,7 @@ export function mergeRemoteSnapshot(
       tombstones,
       ack,
       preferLocal,
-      (row) => row.endedAt ?? row.startedAt,
+      (row) => workoutClock(row),
     ),
     blocks: mergeList("blocks", local.blocks, remote.blocks, seed.blocks, tombstones, ack, preferLocal, () => ""),
     stations: mergeList(

@@ -17,7 +17,15 @@ import type {
   SetLog,
   User,
 } from "./types";
-import { emptyMeals, nutritionComment, parseMealDump } from "./nutrition";
+import { emptyMeals, nutritionComment, parseMealDump, todayStamp } from "./nutrition";
+import {
+  atLocalStamp,
+  isValidStamp,
+  omitWorkout,
+  planSplitStart,
+  reusableOpenId,
+  shiftStartedAt,
+} from "./session-date";
 import { DEFAULT_REMINDERS } from "./reminders";
 
 type FinishPayload = {
@@ -33,8 +41,9 @@ type GymStore = GymData & {
     userId: string,
     patch: Partial<Pick<User, "displayName" | "unitSystem" | "heightCm" | "weightKg" | "nutritionGoal">>,
   ) => void;
-  startWorkout: () => string;
-  startSplitDay: (dayId?: SplitDay["id"]) => string;
+  startWorkout: (opts?: { date?: string }) => string;
+  startSplitDay: (dayId?: SplitDay["id"], opts?: { date?: string }) => string;
+  setWorkoutDate: (workoutId: string, stamp: string) => boolean;
   finishWorkout: (workoutId: string, payload?: FinishPayload) => void;
   abandonWorkout: (workoutId: string) => void;
   addStraightBlock: (workoutId: string, exerciseId: string) => string;
@@ -91,13 +100,15 @@ export const useGymStore = create<GymStore>()(
           users: state.users.map((u) => (u.id === userId ? { ...u, ...patch } : u)),
         })),
 
-      startWorkout: () => {
+      startWorkout: (opts) => {
         if (!duoUnlocked()) return "";
         const state = get();
-        const existing = state.workouts.find(
-          (w) => w.userId === state.activeUserId && w.status === "in_progress",
-        );
-        if (existing) return existing.id;
+        const now = new Date();
+        const today = todayStamp(now);
+        if (opts?.date && !isValidStamp(opts.date, today)) return "";
+        const stamp = opts?.date && isValidStamp(opts.date, today) ? opts.date : today;
+        const reuse = reusableOpenId(state.workouts, state.activeUserId, stamp);
+        if (reuse) return reuse;
         const id = nid();
         set({
           workouts: [
@@ -106,32 +117,37 @@ export const useGymStore = create<GymStore>()(
               id,
               userId: state.activeUserId,
               duoId: state.duo.id,
-              startedAt: new Date().toISOString(),
+              startedAt: opts?.date ? atLocalStamp(stamp, now) : now.toISOString(),
               endedAt: null,
               status: "in_progress",
               notes: null,
               perceivedExertion: null,
               title: null,
+              updatedAt: now.toISOString(),
             },
           ],
         });
         return id;
       },
 
-      startSplitDay: (dayId) => {
+      startSplitDay: (dayId, opts) => {
         if (!duoUnlocked()) return "";
         const day = SPLIT.find((d) => d.id === dayId) ?? SPLIT[0]!;
+        const now = new Date();
+        const today = todayStamp(now);
+        if (opts?.date && !isValidStamp(opts.date, today)) return "";
+        const stamp = opts?.date && isValidStamp(opts.date, today) ? opts.date : today;
         const prior = get();
-        const existing = prior.workouts.find(
-          (w) => w.userId === prior.activeUserId && w.status === "in_progress",
+        const plan = planSplitStart(
+          prior.workouts,
+          prior.activeUserId,
+          stamp,
+          day.id,
+          (workout) => (inferSplitDay(prior, workout) ?? splitDayByTitle(workout.title))?.id ?? null,
         );
-        if (existing) {
-          const current =
-            inferSplitDay(prior, existing) ?? splitDayByTitle(existing.title);
-          if (current?.id === day.id) return existing.id;
-          get().abandonWorkout(existing.id);
-        }
-        const id = get().startWorkout();
+        if (plan.action === "reuse") return plan.id;
+        if (plan.action === "replace-same-day") get().abandonWorkout(plan.id);
+        const id = get().startWorkout({ date: stamp });
         if (!id) return "";
         set((state) => ({
           workouts: state.workouts.map((w) =>
@@ -169,6 +185,7 @@ export const useGymStore = create<GymStore>()(
                       "Entrenamiento",
                     notes: payload?.notes?.trim() || w.notes,
                     perceivedExertion: payload?.perceivedExertion ?? w.perceivedExertion,
+                    updatedAt: new Date().toISOString(),
                   }
                 : w,
             ),
@@ -176,17 +193,25 @@ export const useGymStore = create<GymStore>()(
         });
       },
 
-      abandonWorkout: (workoutId) =>
-        set((state) => {
-          const blockIds = state.blocks.filter((b) => b.workoutId === workoutId).map((b) => b.id);
-          const stationIds = state.stations.filter((s) => blockIds.includes(s.blockId)).map((s) => s.id);
-          return {
-            workouts: state.workouts.filter((w) => w.id !== workoutId),
-            blocks: state.blocks.filter((b) => b.workoutId !== workoutId),
-            stations: state.stations.filter((s) => !blockIds.includes(s.blockId)),
-            sets: state.sets.filter((s) => !stationIds.includes(s.stationId)),
-          };
-        }),
+      setWorkoutDate: (workoutId, stamp) => {
+        if (!duoUnlocked()) return false;
+        const today = todayStamp();
+        if (!isValidStamp(stamp, today)) return false;
+        const current = get().workouts.find((workout) => workout.id === workoutId);
+        if (!current) return false;
+        const startedAt = shiftStartedAt(current.startedAt, stamp, today);
+        if (!startedAt) return false;
+        set((state) => ({
+          workouts: state.workouts.map((workout) =>
+            workout.id === workoutId
+              ? { ...workout, startedAt, updatedAt: new Date().toISOString() }
+              : workout,
+          ),
+        }));
+        return true;
+      },
+
+      abandonWorkout: (workoutId) => set((state) => omitWorkout(state, workoutId)),
 
       addStraightBlock: (workoutId, exerciseId) => {
         get().addStraightBlocks(workoutId, [exerciseId]);
