@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, IBM_Plex_Mono } from "next/font/google";
 import { AppShell } from "@/components/app-shell";
-import { DuoGate } from "@/components/duo-gate";
+import { AuthGate } from "@/components/auth-gate";
 import { HydrateGate } from "@/components/hydrate-gate";
 import { SyncProvider } from "@/components/sync-provider";
 import "./globals.css";
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     default: "Duo Lift",
     template: "%s",
   },
-  description: "Bitácora privada de gym para dos. Qué toca hoy, qué peso llevas, cómo vas frente a tu dúo.",
+  description: "Tu bitácora de gym. Qué toca hoy, qué peso llevas y cómo vas.",
   applicationName: "Duo Lift",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -47,13 +47,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${archivo.variable} ${plex.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-background font-sans text-foreground">
-        <DuoGate>
-          <HydrateGate>
+        <HydrateGate>
+          <AuthGate>
             <SyncProvider>
               <AppShell>{children}</AppShell>
             </SyncProvider>
-          </HydrateGate>
-        </DuoGate>
+          </AuthGate>
+        </HydrateGate>
       </body>
     </html>
   );

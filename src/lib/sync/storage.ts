@@ -4,6 +4,17 @@ const TOMBSTONE_KEY = "duo-lift-sync-tombstones";
 const ACK_KEY = "duo-lift-sync-ack";
 const META_KEY = "duo-lift-sync-meta";
 
+/** Queues are per auth user so one phone can hold two accounts without mixing deletes. */
+let storageUser = "";
+
+export function setSyncStorageUser(userId: string | null) {
+  storageUser = userId ?? "";
+}
+
+function scoped(base: string) {
+  return storageUser ? `${base}:${storageUser}` : base;
+}
+
 export type SyncMeta = {
   /** Set after the first successful upload of this browser's localStorage. */
   migratedAt: string | null;
@@ -12,7 +23,7 @@ export type SyncMeta = {
 function readJson<T>(key: string, fallback: T): T {
   if (typeof localStorage === "undefined") return fallback;
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(scoped(key));
     if (!raw) return fallback;
     return JSON.parse(raw) as T;
   } catch {
@@ -22,7 +33,25 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson(key: string, value: unknown) {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(value));
+  localStorage.setItem(scoped(key), JSON.stringify(value));
+}
+
+/** One-time copy of the shared queue, limited to ids this account still owns. */
+export function seedLegacyTombstones(userId: string, ownedIds: ReadonlySet<string>) {
+  if (typeof localStorage === "undefined" || !userId) return;
+  const flag = `duo-lift-sync-seeded:${userId}`;
+  if (localStorage.getItem(flag)) return;
+  localStorage.setItem(flag, "1");
+  let legacy: Tombstone[] = [];
+  try {
+    const raw = localStorage.getItem(TOMBSTONE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Tombstone[]) : [];
+    legacy = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    legacy = [];
+  }
+  const mine = legacy.filter((row) => ownedIds.has(row.id));
+  if (mine.length > 0) addTombstones(mine);
 }
 
 function tombstoneKey(row: Tombstone) {

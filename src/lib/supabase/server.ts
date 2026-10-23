@@ -3,10 +3,8 @@ import { cookies } from "next/headers";
 import { supabasePublishableKey, supabaseUrl } from "./public-env";
 
 /**
- * Cookie-aware Supabase client for a future Auth session.
- * The duo login cookie (`duo_session`) is separate and is what `/api/sync` checks.
- * This client uses the anon/publishable key, so RLS still denies table access
- * until Seguridad restores grants.
+ * Cookie-aware Supabase client for the signed-in user.
+ * Uses the publishable key. RLS allows only that user's rows.
  */
 export async function createSupabaseServerClient() {
   const url = supabaseUrl();

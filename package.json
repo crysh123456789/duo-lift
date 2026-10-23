@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import ./test/register.mjs --test src/lib/duo-lock.test.mjs src/lib/nutrition.test.mjs src/lib/session-date.test.mjs src/lib/sync/merge.test.mjs src/lib/sync/round.test.mjs src/lib/sync/status.test.mjs"
+    "test": "node --import ./test/register.mjs --test src/lib/duo-lock.test.mjs src/lib/nutrition.test.mjs src/lib/session-date.test.mjs src/lib/sync/merge.test.mjs src/lib/sync/round.test.mjs src/lib/sync/status.test.mjs src/lib/auth/scope.test.mjs src/lib/auth/errors.test.mjs src/lib/auth/migration.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

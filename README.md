@@ -16,6 +16,14 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Cuentas
+
+Supabase Auth (correo y contraseña) es la identidad. Cada cuenta ve solo sus entrenos y su diario. No hay clave compartida ni chips para cambiar de persona.
+
+En el primer inicio, si queda historial legado sin reclamar, la persona elige Historial de Cristian, Historial de Kviedes o Empezar limpio. Esa elección la escribe el RPC `claim_legacy_history` / `decline_legacy_history`: marca `private.legacy_claims.claimed_by` solo cuando está vacío. Una segunda cuenta recibe `already_claimed`. La interfaz no puede reclamar dos veces.
+
+En Authentication → Providers → Email, desactiva **Confirm email** para que Crear cuenta abra la sesión. Si queda activo, la app pide revisar el correo.
+
 ## Supabase sync
 
 The gym log stays in Zustand (`duo-lift-v2`) and, when sync is enabled, also upserts into the Duo Lift Supabase project (`https://xivctpewomnpzcgbvczv.supabase.co`, region `sa-east-1`).
@@ -24,13 +32,14 @@ Copy `.env.example` to `.env.local`. On Vercel set:
 
 | Variable | Where |
 | --- | --- |
-| `DUO_LIFT_PASSWORD` | Server. Shared duo password. Required before sync can turn on. |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://xivctpewomnpzcgbvczv.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Legacy anon JWT. Public by design. `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is accepted if the anon key is empty. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server only. Bypasses RLS. Never prefix it with `NEXT_PUBLIC_`. |
-| `DUO_LIFT_SYNC_ENABLED` | `true` on production (`duo-lift-gamma.vercel.app`) uploads this browser's localStorage after the duo cookie is valid. A failed round keeps the phone history and shows the error pill. `false` leaves the pill on Local. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Publishable / legacy anon key. Public by design. `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is accepted if the anon key is empty. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only. Not used by `/api/sync`. Never prefix it with `NEXT_PUBLIC_`. |
+| `DUO_LIFT_SYNC_ENABLED` | `true` on production (`duo-lift-gamma.vercel.app`) uploads this account's rows after login. A failed round keeps the phone history and shows the error pill. |
 
-Apply `supabase/migrations/0001_init.sql` through `0006_nutrition_meals_v2.sql` before enabling the flag. On project `xivctpewomnpzcgbvczv` migrations through `0005` are applied; `0006` only comments `food_days.meals` and does not rewrite rows. Anon and authenticated have no table grants. `SUPABASE_SERVICE_ROLE_KEY` stays on the server; the browser only talks to `/api/sync`.
+`DUO_LIFT_PASSWORD` is retired. This release does not read it. After both people can sign in on gamma, delete it from Vercel Production and Preview and redeploy. Old `duo_session` cookies are ignored. Optional one-time rotate before cutover: set the env to a new random value so old HMAC cookies die; deleting it is enough for this release.
+
+Apply migrations `0001` through `0007_auth_per_person.sql` together with this app. `0007` replaces `sync_apply` so it runs as the signed-in user and revokes `service_role`. It is already applied on the live project, so the previous gamma `/api/sync` fails until this release is deployed. Phone data stays on the device. A fresh database still runs `0001`–`0007` as one file. RLS is `(select auth.uid())::text` on the caller's rows. `user_metadata` is only a profile seed at signup, never a policy. `duos`, `duo_members`, `duo_reminders`, and `sync_tombstones` keep RLS on with no policies and no grants to `anon` or `authenticated`.
 
 The diary stores five slots in that jsonb column. Older days keep a string per slot; the app reads it as the meal note. New days store `{ time, items, note }` (protein, carbs, fat, grams). Kilocalories are derived (`4P + 4C + 9G`) and are not a column. The same payload syncs through `/api/sync` when `DUO_LIFT_SYNC_ENABLED` is on.
 

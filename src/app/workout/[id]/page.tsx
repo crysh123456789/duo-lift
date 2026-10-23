@@ -11,12 +11,13 @@ import { DATE_UPDATED, sessionStamp, unclosedBadge } from "@/lib/session-date";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { personName } from "@/lib/people";
+import { useOwnGym } from "@/lib/auth/use-own-gym";
 import { useGymStore } from "@/lib/store";
 import { formatSet, workoutTree, workoutVolume } from "@/lib/workout-tree";
 
 export default function WorkoutDetailPage() {
   const params = useParams<{ id: string }>();
-  const data = useGymStore();
+  const data = useOwnGym();
   const addReaction = useGymStore((s) => s.addReaction);
   const setWorkoutDate = useGymStore((s) => s.setWorkoutDate);
   const [comment, setComment] = useState("");

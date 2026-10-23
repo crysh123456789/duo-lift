@@ -26,7 +26,7 @@ import {
 import { whenLabel } from "@/lib/format";
 import { isSameSessionDay, staleOpenWorkout, unclosedBadge } from "@/lib/session-date";
 import { personName } from "@/lib/people";
-import { useGymStore } from "@/lib/store";
+import { useOwnGym } from "@/lib/auth/use-own-gym";
 
 const tooltipStyle = {
   background: "#151712",
@@ -44,7 +44,7 @@ const LIFTS = [
 ];
 
 export default function StatsPage() {
-  const data = useGymStore();
+  const data = useOwnGym();
   const days = dailyVolume(data, 14);
   const volume = weeklyVolume(data, 4);
   const thisWeek = volume[volume.length - 1];
@@ -109,22 +109,11 @@ export default function StatsPage() {
         </section>
       ) : null}
 
-      <section className="grid gap-3 md:grid-cols-2">
-        {data.users.map((user, i) => {
-          const weekKg = Number(thisWeek?.[user.id] ?? volumeLastDays(data, user.id, 7));
-          const other = data.users.find((u) => u.id !== user.id);
-          const otherKg = other ? Number(thisWeek?.[other.id] ?? 0) : 0;
-          const lead = weekKg >= otherKg;
-          return (
-            <div key={user.id} className="rounded-2xl border border-line bg-surface p-4">
-              <p className="text-sm" style={{ color: COLORS[i] }}>
-                {personName(user) || "Sin nombre"}
-              </p>
-              <p className="font-mono text-3xl tabular-nums">{formatKg(weekKg)} kg</p>
-              <p className="text-xs text-muted">{lead ? "Va arriba esta semana" : "Persiguiendo"}</p>
-            </div>
-          );
-        })}
+      <section className="rounded-2xl border border-line bg-surface p-4">
+        <p className="text-sm text-accent">Esta semana</p>
+        <p className="font-mono text-3xl tabular-nums">
+          {formatKg(Number(thisWeek?.[data.activeUserId] ?? volumeLastDays(data, data.activeUserId, 7)))} kg
+        </p>
       </section>
 
       <section>
@@ -144,7 +133,7 @@ export default function StatsPage() {
                 <Bar
                   key={user.id}
                   dataKey={user.id}
-                  name={personName(user) || "Duo"}
+                  name={personName(user) || "Tú"}
                   fill={COLORS[i] ?? COLORS[0]}
                   radius={[4, 4, 0, 0]}
                 />
@@ -160,13 +149,9 @@ export default function StatsPage() {
           {LIFTS.map((lift) => (
             <li key={lift.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <p className="text-sm">{lift.name}</p>
-              <div className="flex gap-4 font-mono text-sm tabular-nums">
-                {data.users.map((user, i) => (
-                  <span key={user.id} style={{ color: COLORS[i] }}>
-                    {bestWeight(data, user.id, lift.id) ?? "—"} kg
-                  </span>
-                ))}
-              </div>
+              <p className="font-mono text-sm tabular-nums text-accent">
+                {bestWeight(data, data.activeUserId, lift.id) ?? "—"} kg
+              </p>
             </li>
           ))}
         </ul>

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { Exercise, MuscleGroup } from "@/lib/types";
 import { addExercisesLabel } from "@/lib/copy";
 import { getWorkingLoad } from "@/lib/loads";
+import { useOwnGym } from "@/lib/auth/use-own-gym";
 import { useGymStore } from "@/lib/store";
 import { Button, Field, Panel } from "./ui";
 
@@ -30,7 +31,7 @@ export function ExercisePicker({
   onPickMany?: (exercises: Exercise[]) => void;
   onClose: () => void;
 }) {
-  const data = useGymStore();
+  const data = useOwnGym();
   const exercises = data.exercises;
   const addCustom = useGymStore((s) => s.addCustomExercise);
   const [q, setQ] = useState("");

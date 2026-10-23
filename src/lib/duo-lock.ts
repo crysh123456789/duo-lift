@@ -1,3 +1,7 @@
+/**
+ * Retired. Supabase Auth owns the session. The app does not import this module.
+ * DUO_LIFT_PASSWORD is no longer checked. Delete that env var after cutover.
+ */
 import { createHmac, timingSafeEqual } from "crypto";
 
 export const DUO_COOKIE = "duo_session";
