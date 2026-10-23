@@ -22,7 +22,9 @@ Supabase Auth (correo y contraseña) es la identidad. Cada cuenta ve solo sus en
 
 En el primer inicio, si queda historial legado sin reclamar, la persona elige Historial de Cristian, Historial de Kviedes o Empezar limpio. Esa elección la escribe el RPC `claim_legacy_history` / `decline_legacy_history`: marca `private.legacy_claims.claimed_by` solo cuando está vacío. Una segunda cuenta recibe `already_claimed`. La interfaz no puede reclamar dos veces.
 
-En Authentication → Providers → Email, desactiva **Confirm email** para que Crear cuenta abra la sesión. Si queda activo, la app pide revisar el correo.
+En Authentication → Providers → Email, desactiva **Confirm email** para que Crear cuenta abra la sesión. Si queda activo, la app pide revisar el correo. Ese interruptor es un paso de operaciones aparte del enlace de recuperación.
+
+`/forgot` pide el enlace y `/reset` guarda la contraseña nueva. El `redirectTo` está fijado a `https://duo-lift-gamma.vercel.app/reset` (nunca localhost). En Authentication → URL Configuration, Site URL tiene que ser `https://duo-lift-gamma.vercel.app` y Redirect URLs tiene que permitir `https://duo-lift-gamma.vercel.app/reset`. El texto de éxito es el mismo si ese correo no tiene cuenta.
 
 ## Supabase sync
 

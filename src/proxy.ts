@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isAuthScreen, isGuestOnlyAuthScreen } from "@/lib/auth/paths";
 import { supabasePublishableKey, supabaseUrl } from "@/lib/supabase/public-env";
 
 const PUBLIC_FILE = /\.(?:svg|png|jpg|jpeg|gif|webp|ico|webmanifest)$/;
@@ -15,7 +16,8 @@ export async function proxy(request: NextRequest) {
 
   const url = supabaseUrl();
   const key = supabasePublishableKey();
-  const authPage = pathname === "/login" || pathname === "/signup";
+  const authPage = isAuthScreen(pathname);
+  const guestOnly = isGuestOnlyAuthScreen(pathname);
   const api = pathname.startsWith("/api/");
 
   if (!url || !key) {
@@ -50,7 +52,7 @@ export async function proxy(request: NextRequest) {
     return copyCookies(response, NextResponse.redirect(login));
   }
 
-  if (user && authPage) {
+  if (user && guestOnly) {
     return copyCookies(response, NextResponse.redirect(new URL("/", request.url)));
   }
 
