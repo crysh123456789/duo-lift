@@ -4,9 +4,14 @@ import { useRouter } from "next/navigation";
 import { ReminderSettings } from "@/components/reminder-settings";
 import { PageTitle } from "@/components/page-title";
 import { Button, Field, Panel } from "@/components/ui";
+import { bumpAuthEpoch, setAuthPhase } from "@/lib/auth/phase";
 import { bestWeight, exerciseByName } from "@/lib/metrics";
 import { personName } from "@/lib/people";
+import { setDuoUnlocked } from "@/lib/session-flag";
 import { useGymStore } from "@/lib/store";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { setSyncUserId } from "@/lib/sync/session-user";
+import { getSyncPhase } from "@/lib/sync/status";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -26,8 +31,8 @@ export default function ProfilePage() {
       <PageTitle title={name ? `Perfil · ${name}` : "Perfil"} />
       <div>
         <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">Perfil</p>
-        <h1 className="text-3xl font-medium tracking-tight">{name || "Identidad del dúo"}</h1>
-        <p className="text-sm text-muted">Nombres, cuerpo y alertas. El diario de comida está en Diario.</p>
+        <h1 className="text-3xl font-medium tracking-tight">{name || "Tu perfil"}</h1>
+        <p className="text-sm text-muted">Cuerpo y alertas. El diario de comida está en Diario.</p>
       </div>
 
       <Panel className="grid grid-cols-3 gap-3 p-4">
@@ -52,18 +57,16 @@ export default function ProfilePage() {
       </Panel>
 
       <Panel className="space-y-3 p-4">
-        <p className="text-[11px] uppercase tracking-wider text-muted">Nombres</p>
-        <p className="text-sm text-muted">Así aparecen en toda la app.</p>
-        {data.users.map((user) => (
-          <Field key={user.id} label={personName(user) || "Nombre"}>
-            <input
-              value={user.displayName}
-              placeholder="Nombre"
-              onChange={(e) => updateUser(user.id, { displayName: e.target.value })}
-              className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 outline-none focus:border-accent"
-            />
-          </Field>
-        ))}
+        <p className="text-xs uppercase tracking-wider text-muted">Nombre</p>
+        <p className="text-sm text-muted">Así apareces en tu bitácora.</p>
+        <Field label="Nombre">
+          <input
+            value={me.displayName}
+            placeholder="Nombre"
+            onChange={(e) => updateUser(me.id, { displayName: e.target.value })}
+            className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 outline-none focus:border-accent"
+          />
+        </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Estatura (cm)">
             <input
@@ -93,12 +96,27 @@ export default function ProfilePage() {
       <Button
         className="w-full"
         onClick={async () => {
+          const phase = getSyncPhase();
+          if (
+            (phase === "syncing" || phase === "error") &&
+            !window.confirm(
+              "Hay cambios que todavía no están en la nube. Si sales, siguen en este teléfono. ¿Cerrar sesión?",
+            )
+          ) {
+            return;
+          }
+          const supabase = createBrowserSupabaseClient();
+          if (supabase) await supabase.auth.signOut();
           await fetch("/api/session", { method: "DELETE" });
+          bumpAuthEpoch();
+          setSyncUserId(null);
+          setDuoUnlocked(false);
+          setAuthPhase("anon");
           router.replace("/login");
           router.refresh();
         }}
       >
-        Cerrar sesión del dúo
+        Cerrar sesión
       </Button>
     </div>
   );

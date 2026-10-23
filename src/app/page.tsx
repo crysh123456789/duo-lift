@@ -18,13 +18,13 @@ import { personName } from "@/lib/people";
 import { groupDuoSessions } from "@/lib/session-groups";
 import { DATE_UPDATED, homeTrainCta, staleOpenWorkouts } from "@/lib/session-date";
 import { splitHeadline } from "@/lib/split";
-import { useGymStore } from "@/lib/store";
+import { useOwnGym } from "@/lib/auth/use-own-gym";
 import { workoutVolume } from "@/lib/workout-tree";
 
 const PALETTE = ["var(--me)", "var(--them)"];
 
 export default function DashboardPage() {
-  const data = useGymStore();
+  const data = useOwnGym();
   const [dateNotice, setDateNotice] = useState("");
   const me = data.users.find((u) => u.id === data.activeUserId);
   const myName = personName(me) || "tú";

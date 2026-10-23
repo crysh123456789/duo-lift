@@ -4,10 +4,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { startGymSync } from "@/lib/sync/engine";
 
-/** Starts sync after the Zustand persist gate has hydrated and the duo cookie is accepted. */
+/** Starts sync after hydration, once the signed-in user has chosen a history. */
 export function SyncProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const active = pathname !== "/login";
+  const active = pathname !== "/login" && pathname !== "/signup" && pathname !== "/claim";
   useEffect(() => {
     if (!active) return;
     return startGymSync();

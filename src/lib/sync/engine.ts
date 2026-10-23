@@ -1,11 +1,12 @@
 "use client";
 
-import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { scopeToUser, stitchGym } from "@/lib/auth/scope";
 import { useGymStore } from "@/lib/store";
 import type { GymData } from "@/lib/types";
 import { ackMap, collectTombstones, snapshotsMatch } from "./merge";
 import { parseSnapshot, parseTombstones } from "./payload";
 import { prepareSyncSnapshot, serverKeptWorkouts, tombstonesForRound } from "./round";
+import { getSyncUserId, subscribeSyncUser } from "./session-user";
 import { snapshotFromState } from "./snapshot";
 import { setSyncPhase } from "./status";
 import {
@@ -14,6 +15,8 @@ import {
   readSyncMeta,
   readTombstones,
   removeTombstones,
+  seedLegacyTombstones,
+  setSyncStorageUser,
   writeAck,
   writeSyncMeta,
 } from "./storage";
@@ -36,10 +39,14 @@ function currentSnapshot(): GymData {
   return snapshotFromState(useGymStore.getState());
 }
 
-function applySnapshot(next: GymData) {
+function ownSnapshot(userId: string): GymData {
+  return scopeToUser(currentSnapshot(), userId);
+}
+
+function applyOwn(own: GymData, userId: string) {
   applying = true;
   try {
-    useGymStore.setState(next);
+    useGymStore.setState(stitchGym(currentSnapshot(), own, userId));
   } finally {
     applying = false;
   }
@@ -49,8 +56,8 @@ function logSync(message: string) {
   console.warn(`[sync] ${message}`);
 }
 
-async function pull(duoId: string, signal: AbortSignal): Promise<SyncResponse> {
-  const response = await fetch(`/api/sync?duoId=${encodeURIComponent(duoId)}`, {
+async function pull(signal: AbortSignal): Promise<SyncResponse> {
+  const response = await fetch("/api/sync", {
     cache: "no-store",
     credentials: "same-origin",
     signal,
@@ -97,12 +104,6 @@ export function startGymSync() {
   let queued = false;
   let baseline = currentSnapshot();
 
-  try {
-    createBrowserSupabaseClient();
-  } catch {
-    // Table access stays closed. Uploads go through /api/sync.
-  }
-
   const schedule = () => {
     if (stopped) return;
     if (timer) clearTimeout(timer);
@@ -123,15 +124,31 @@ export function startGymSync() {
         setSyncPhase("offline");
         return;
       }
+      const userId = getSyncUserId();
+      if (!userId) {
+        setSyncPhase("local");
+        return;
+      }
+      setSyncStorageUser(userId);
       setSyncPhase("syncing");
-      const started = currentSnapshot();
-      const remoteBody = await pull(started.duo.id, controller.signal);
+      const started = ownSnapshot(userId);
+      const ownedIds = new Set<string>([
+        ...started.workouts.map((row) => row.id),
+        ...started.blocks.map((row) => row.id),
+        ...started.stations.map((row) => row.id),
+        ...started.sets.map((row) => row.id),
+        ...started.foodDays.map((row) => row.id),
+        ...Object.keys(started.workingLoads),
+      ]);
+      seedLegacyTombstones(userId, ownedIds);
+      const remoteBody = await pull(controller.signal);
       if (stopped) return;
       if (!remoteBody.enabled) {
         setSyncPhase("local");
         return;
       }
-      const remote = remoteBody.data ? parseSnapshot(remoteBody.data) : null;
+      const parsed = remoteBody.data ? parseSnapshot(remoteBody.data) : null;
+      const remote = parsed ? { ...parsed, duo: started.duo } : null;
       const remoteTombstones = parseTombstones(remoteBody.tombstones);
       const migrated = Boolean(readSyncMeta().migratedAt);
       const remindersFromServer = migrated && remoteBody.remindersFromServer !== false && remote != null;
@@ -170,7 +187,7 @@ export function startGymSync() {
         }
         removeTombstones(prepared.tombstones);
       }
-      const latest = currentSnapshot();
+      const latest = ownSnapshot(userId);
       const latestStones = tombstonesForRound(migrated, latest, readTombstones(), remoteTombstones, ack);
       const followUp = snapshotsMatch(latest, started, ignoreReminders)
         ? prepared
@@ -181,11 +198,11 @@ export function startGymSync() {
         return;
       }
       if (!snapshotsMatch(followUp.snapshot, latest, ignoreReminders)) {
-        applySnapshot(followUp.snapshot);
+        applyOwn(followUp.snapshot, userId);
       }
       writeAck(ackMap(prepared.snapshot));
       if (!readSyncMeta().migratedAt) writeSyncMeta({ migratedAt: new Date().toISOString() });
-      baseline = currentSnapshot();
+      baseline = ownSnapshot(userId);
       setSyncPhase("saved");
     } catch (error) {
       if (stopped || (error instanceof DOMException && error.name === "AbortError")) return;
@@ -214,11 +231,13 @@ export function startGymSync() {
   requestCycle = retry;
 
   const onStore = () => {
+    const userId = getSyncUserId();
+    if (!userId) return;
+    const next = ownSnapshot(userId);
     if (applying) {
-      baseline = currentSnapshot();
+      baseline = next;
       return;
     }
-    const next = currentSnapshot();
     const stones = collectTombstones(baseline, next);
     baseline = next;
     if (stones.length > 0) addTombstones(stones);
@@ -234,6 +253,11 @@ export function startGymSync() {
   };
 
   const unsub = useGymStore.subscribe(onStore);
+  const unsubUser = subscribeSyncUser(() => {
+    const userId = getSyncUserId();
+    baseline = userId ? ownSnapshot(userId) : currentSnapshot();
+    void cycle();
+  });
   window.addEventListener("online", onOnline);
   window.addEventListener("offline", onOffline);
   document.addEventListener("visibilitychange", onVisible);
@@ -244,6 +268,7 @@ export function startGymSync() {
     controller.abort();
     if (timer) clearTimeout(timer);
     unsub();
+    unsubUser();
     window.removeEventListener("online", onOnline);
     window.removeEventListener("offline", onOffline);
     document.removeEventListener("visibilitychange", onVisible);

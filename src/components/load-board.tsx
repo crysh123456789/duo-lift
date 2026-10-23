@@ -5,6 +5,7 @@ import { dayLabel } from "@/lib/format";
 import { GROUP_LABELS, workingLoadBoard } from "@/lib/loads";
 import { lastExerciseDate } from "@/lib/metrics";
 import { personName } from "@/lib/people";
+import { useOwnGym } from "@/lib/auth/use-own-gym";
 import { useGymStore } from "@/lib/store";
 import type { MuscleGroup } from "@/lib/types";
 import { Button } from "./ui";
@@ -20,7 +21,7 @@ const GROUP_ORDER: MuscleGroup[] = [
 ];
 
 export function LoadBoard() {
-  const data = useGymStore();
+  const data = useOwnGym();
   const bumpWorkingLoad = useGymStore((s) => s.bumpWorkingLoad);
   const rows = workingLoadBoard(data);
 
@@ -32,8 +33,7 @@ export function LoadBoard() {
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted">
-        Cargas que llevan los dos, de las series que marquen. El ±2.5 kg aplica a
-        quien esté activo arriba.
+        Tu carga de trabajo, de las series que marques. El ±2.5 kg mueve tu peso.
       </p>
       {grouped.map((section) => (
         <section key={section.group} className="overflow-hidden rounded-2xl border border-line">

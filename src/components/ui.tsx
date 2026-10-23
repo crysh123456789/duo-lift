@@ -60,7 +60,7 @@ export function NumberField({
 }) {
   return (
     <label className={`block min-w-0 ${className}`}>
-      <span className="mb-1 block text-[11px] uppercase tracking-wider text-muted">{label}</span>
+      <span className="mb-1 block text-xs uppercase tracking-wider text-muted">{label}</span>
       <input
         inputMode="decimal"
         value={value ?? ""}
@@ -101,7 +101,7 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[11px] uppercase tracking-wider text-muted">{label}</span>
+      <span className="mb-1 block text-xs uppercase tracking-wider text-muted">{label}</span>
       {children}
     </label>
   );

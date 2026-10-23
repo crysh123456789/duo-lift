@@ -16,7 +16,7 @@ export function HydrateGate({ children }: { children: ReactNode }) {
     () => false,
   );
 
-  if (pathname === "/login") return children;
+  if (pathname === "/login" || pathname === "/signup") return children;
 
   if (!ready) {
     return (

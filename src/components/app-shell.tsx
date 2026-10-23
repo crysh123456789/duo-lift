@@ -28,9 +28,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const users = useGymStore((s) => s.users);
   const activeUserId = useGymStore((s) => s.activeUserId);
-  const switchUser = useGymStore((s) => s.switchUser);
+  const me = users.find((user) => user.id === activeUserId);
+  const name = personName(me);
 
-  if (pathname === "/login") return <>{children}</>;
+  if (pathname === "/login" || pathname === "/signup" || pathname === "/claim") return <>{children}</>;
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -39,45 +40,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex min-w-0 items-center gap-3">
             <Link href="/" className="flex shrink-0 items-center gap-2">
               <span className="grid h-7 w-7 place-items-center rounded-md border border-accent/40 font-mono text-[10px] text-accent">
-                {users.map((u) => personInitial(u)).join("") || "DL"}
+                {personInitial(me) === "?" ? "DL" : personInitial(me)}
               </span>
               <p className="font-mono text-[11px] tracking-[0.28em] text-accent uppercase">Duo Lift</p>
             </Link>
             <SyncStatus />
           </div>
-          <div className="flex items-center gap-1 rounded-full border border-line bg-surface p-1">
-            {users.map((user, i) => {
-              const on = user.id === activeUserId;
-              const name = personName(user);
-              return (
-                <button
-                  key={user.id}
-                  type="button"
-                  onClick={() => switchUser(user.id)}
-                  className={`flex items-center gap-2 rounded-full px-2 py-1 text-xs transition-colors ${
-                    on ? "bg-surface-2 text-foreground" : "text-muted"
-                  }`}
-                >
-                  <Avatar name={name || "?"} hue={user.avatarHue} size={22} />
-                  <span className="hidden sm:inline" style={{ color: on ? (i === 0 ? "var(--me)" : "var(--them)") : undefined }}>
-                    {name || "Nombre"}
-                  </span>
-                </button>
-              );
-            })}
-            <Link
-              href="/profile"
-              className="ml-0.5 grid h-8 w-8 place-items-center rounded-full text-muted hover:text-foreground"
-              aria-label="Perfil"
-            >
-              <UserRound size={16} />
-            </Link>
-          </div>
+          <Link
+            href="/profile"
+            className="flex h-11 min-w-11 items-center gap-2 rounded-full border border-line bg-surface px-2 text-foreground"
+            aria-label="Perfil"
+          >
+            <Avatar name={name || "?"} hue={me?.avatarHue ?? 80} size={28} />
+            <span className="max-w-[8rem] truncate text-sm">{name || "Perfil"}</span>
+            <UserRound size={16} className="text-muted" />
+          </Link>
         </div>
-        <p className="border-t border-line px-4 py-2 text-xs text-muted sm:hidden md:pl-56">
-          Registrando como{" "}
-          <span className="font-medium text-foreground">{personName(users.find((user) => user.id === activeUserId)) || "tú"}</span>
-        </p>
       </header>
 
       <ReminderWatcher />
