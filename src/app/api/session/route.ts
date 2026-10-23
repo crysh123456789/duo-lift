@@ -1,6 +1,13 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { DUO_COOKIE, duoPassword, isValidSession, sessionToken } from "@/lib/duo-lock";
+import {
+  DUO_COOKIE,
+  attachSessionCookie,
+  clearSessionCookie,
+  duoPassword,
+  isValidSession,
+  sessionToken,
+} from "@/lib/duo-lock";
 
 export async function GET() {
   const jar = await cookies();
@@ -24,18 +31,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Clave incorrecta." }, { status: 401 });
   }
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(DUO_COOKIE, sessionToken(), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  attachSessionCookie(res, sessionToken());
   return res;
 }
 
 export async function DELETE() {
   const res = NextResponse.json({ ok: true });
-  res.cookies.delete(DUO_COOKIE);
+  clearSessionCookie(res);
   return res;
 }
