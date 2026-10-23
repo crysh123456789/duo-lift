@@ -10,6 +10,12 @@ type MergeOptions = {
   ack?: Record<string, string>;
   /** False when the server has no reminder row yet, so the phone keeps its own alarms. */
   remindersFromServer?: boolean;
+  /**
+   * Until this phone has a server ack, every local row stays as-is.
+   * Remote-only rows can still be added. Remote tombstones are not applied here;
+   * the caller omits them until the upload has been acknowledged.
+   */
+  preferLocal?: boolean;
 };
 
 const LIST_ENTITIES = [
@@ -43,10 +49,11 @@ function chooseRow<T>(
   seed: T | undefined,
   ackHash: string | undefined,
   time: (row: T) => string,
+  preferLocal = false,
 ): T | undefined {
   if (!local) return remote;
   if (!remote) return local;
-  if (sameValue(local, remote)) return local;
+  if (preferLocal || sameValue(local, remote)) return local;
   // Untouched seed on this phone should not clobber the other phone's copy.
   if (seed && sameValue(local, seed)) return remote;
   const localHash = stableStringify(local);
@@ -62,6 +69,7 @@ function mergeList<E extends ListEntity>(
   seed: ListKey[E][],
   tombstones: Tombstone[],
   ack: Record<string, string>,
+  preferLocal: boolean,
   time: (row: ListKey[E]) => string,
 ): ListKey[E][] {
   const dropped = droppedIds(tombstones, entity);
@@ -78,6 +86,7 @@ function mergeList<E extends ListEntity>(
       seedById.get(id),
       ack[`${entity}:${id}`],
       time,
+      preferLocal,
     );
     if (chosen) out.push(chosen);
   }
@@ -103,9 +112,10 @@ function mergeReminders(
   seed: ReminderSettings,
   ack: Record<string, string>,
   authoritative: boolean,
+  preferLocal: boolean,
 ): ReminderSettings {
   const normalizedLocal = normalizeReminders(local);
-  if (!authoritative) return normalizedLocal;
+  if (preferLocal || !authoritative) return normalizedLocal;
   const normalizedRemote = normalizeReminders(remote);
   const chosen =
     chooseRow(normalizedLocal, normalizedRemote, normalizeReminders(seed), ack.reminders, () => "") ??
@@ -128,19 +138,29 @@ export function mergeRemoteSnapshot(
 ): GymData {
   const seed = options?.seed ?? createSeed();
   const ack = options?.ack ?? {};
+  const preferLocal = options?.preferLocal === true;
   if (!remote) {
     return canonicalize(applyTombstones(local, tombstones));
   }
 
-  const mergedUsers = mergeUsers(local, remote, seed, ack);
+  const mergedUsers = mergeUsers(local, remote, seed, ack, preferLocal);
   const duo =
-    chooseRow(local.duo, remote.duo, seed.duo, ack["duo"], (row) => row.createdAt) ?? local.duo;
+    chooseRow(local.duo, remote.duo, seed.duo, ack["duo"], (row) => row.createdAt, preferLocal) ?? local.duo;
 
   return canonicalize({
     users: mergedUsers,
     duo,
-    members: mergeMembers(local, remote, seed, tombstones, ack),
-    exercises: mergeList("exercises", local.exercises, remote.exercises, seed.exercises, tombstones, ack, () => ""),
+    members: mergeMembers(local, remote, seed, tombstones, ack, preferLocal),
+    exercises: mergeList(
+      "exercises",
+      local.exercises,
+      remote.exercises,
+      seed.exercises,
+      tombstones,
+      ack,
+      preferLocal,
+      () => "",
+    ),
     workouts: mergeList(
       "workouts",
       local.workouts,
@@ -148,11 +168,30 @@ export function mergeRemoteSnapshot(
       seed.workouts,
       tombstones,
       ack,
+      preferLocal,
       (row) => row.endedAt ?? row.startedAt,
     ),
-    blocks: mergeList("blocks", local.blocks, remote.blocks, seed.blocks, tombstones, ack, () => ""),
-    stations: mergeList("stations", local.stations, remote.stations, seed.stations, tombstones, ack, () => ""),
-    sets: mergeList("sets", local.sets, remote.sets, seed.sets, tombstones, ack, (row) => row.loggedAt),
+    blocks: mergeList("blocks", local.blocks, remote.blocks, seed.blocks, tombstones, ack, preferLocal, () => ""),
+    stations: mergeList(
+      "stations",
+      local.stations,
+      remote.stations,
+      seed.stations,
+      tombstones,
+      ack,
+      preferLocal,
+      () => "",
+    ),
+    sets: mergeList(
+      "sets",
+      local.sets,
+      remote.sets,
+      seed.sets,
+      tombstones,
+      ack,
+      preferLocal,
+      (row) => row.loggedAt,
+    ),
     reactions: mergeList(
       "reactions",
       local.reactions,
@@ -160,9 +199,10 @@ export function mergeRemoteSnapshot(
       seed.reactions,
       tombstones,
       ack,
+      preferLocal,
       (row) => row.createdAt,
     ),
-    workingLoads: mergeLoads(local, remote, seed, tombstones, ack),
+    workingLoads: mergeLoads(local, remote, seed, tombstones, ack, preferLocal),
     foodDays: mergeList(
       "foodDays",
       collapseFoodDays(local.foodDays ?? []),
@@ -170,6 +210,7 @@ export function mergeRemoteSnapshot(
       seed.foodDays ?? [],
       tombstones,
       ack,
+      preferLocal,
       (row) => row.updatedAt,
     ),
     reminders: mergeReminders(
@@ -178,6 +219,7 @@ export function mergeRemoteSnapshot(
       seed.reminders,
       ack,
       options?.remindersFromServer !== false,
+      preferLocal,
     ),
   });
 }
@@ -200,7 +242,13 @@ function applyTombstones(local: GymData, tombstones: Tombstone[]): GymData {
   return { ...local, workouts, blocks, stations, sets, reactions, exercises, foodDays, workingLoads, members };
 }
 
-function mergeUsers(local: GymData, remote: GymData, seed: GymData, ack: Record<string, string>) {
+function mergeUsers(
+  local: GymData,
+  remote: GymData,
+  seed: GymData,
+  ack: Record<string, string>,
+  preferLocal: boolean,
+) {
   const seedById = new Map(seed.users.map((row) => [row.id, row]));
   const localById = new Map(local.users.map((row) => [row.id, row]));
   const remoteById = new Map(remote.users.map((row) => [row.id, row]));
@@ -213,6 +261,7 @@ function mergeUsers(local: GymData, remote: GymData, seed: GymData, ack: Record<
       seedById.get(id),
       ack[`users:${id}`],
       (row) => row.createdAt,
+      preferLocal,
     );
     if (chosen) out.push(chosen);
   }
@@ -225,6 +274,7 @@ function mergeMembers(
   seed: GymData,
   tombstones: Tombstone[],
   ack: Record<string, string>,
+  preferLocal: boolean,
 ) {
   const dropped = droppedIds(tombstones, "members");
   const key = (row: GymData["members"][number]) => `${row.duoId}:${row.userId}`;
@@ -235,7 +285,14 @@ function mergeMembers(
   const out = [];
   for (const id of ids) {
     if (dropped.has(id)) continue;
-    const chosen = chooseRow(localById.get(id), remoteById.get(id), seedById.get(id), ack[`members:${id}`], () => "");
+    const chosen = chooseRow(
+      localById.get(id),
+      remoteById.get(id),
+      seedById.get(id),
+      ack[`members:${id}`],
+      () => "",
+      preferLocal,
+    );
     if (chosen) out.push(chosen);
   }
   return out;
@@ -247,6 +304,7 @@ function mergeLoads(
   seed: GymData,
   tombstones: Tombstone[],
   ack: Record<string, string>,
+  preferLocal: boolean,
 ) {
   const dropped = droppedIds(tombstones, "workingLoads");
   const keys = new Set([
@@ -262,6 +320,7 @@ function mergeLoads(
       seed.workingLoads?.[key],
       ack[`workingLoads:${key}`],
       () => "",
+      preferLocal,
     );
     if (chosen) out[key] = chosen;
   }

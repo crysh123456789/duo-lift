@@ -1,12 +1,16 @@
 export type SyncPhase = "local" | "offline" | "syncing" | "saved" | "error";
 
+/** Shown when the long error line does not fit in the header. */
+export const SYNC_ERROR_LABEL = "No se pudo subir · datos seguros en el teléfono";
+export const SYNC_ERROR_LABEL_SHORT = "Error · reintentar";
+
 /**
- * UX hook. The pill is intentionally plain so it can be restyled later.
- * `local`     sync is off; the pill says "Local"
- * `offline`   no network; the Zustand cache is still the log ("Sin red")
- * `syncing`   a pull/push is in flight ("Sync…")
- * `saved`     the last round trip matched Supabase ("Guardado")
- * `error`     the last attempt failed; local data was kept ("Reintento")
+ * Header pill. Local history is never described as lost or cleared.
+ * `local`     sync is off
+ * `offline`   no network; the phone log is still the log
+ * `syncing`   a pull/push is in flight
+ * `saved`     the server acknowledged this phone's history
+ * `error`     the last attempt failed; the phone log was kept
  */
 let phase: SyncPhase = "local";
 const listeners = new Set<() => void>();
@@ -29,13 +33,13 @@ export function subscribeSyncPhase(listener: () => void) {
 export function syncPhaseLabel(phase: SyncPhase): string {
   switch (phase) {
     case "offline":
-      return "Sin red";
+      return "Sin red · datos en el teléfono";
     case "syncing":
-      return "Sync…";
+      return "Subiendo tu historial…";
     case "saved":
-      return "Guardado";
+      return "Guardado en la nube";
     case "error":
-      return "Reintento";
+      return SYNC_ERROR_LABEL;
     default:
       return "Local";
   }

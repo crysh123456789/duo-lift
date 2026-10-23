@@ -89,14 +89,14 @@ export function CircuitBlock({
             </div>
             <div className="flex gap-2">
               <Button
-                className="h-10 w-10 px-0"
+                className="h-11 w-11 px-0"
                 onClick={() => bumpStationWeight(current.station.id, -2.5)}
               >
                 <Minus size={16} />
               </Button>
               <Button
                 variant="primary"
-                className="h-10 w-10 px-0"
+                className="h-11 w-11 px-0"
                 onClick={() => bumpStationWeight(current.station.id, 2.5)}
               >
                 <Plus size={16} />

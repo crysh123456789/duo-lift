@@ -4,12 +4,13 @@ import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { startGymSync } from "@/lib/sync/engine";
 
-/** Starts the local-first sync loop after the Zustand persist gate has hydrated. */
+/** Starts sync after the Zustand persist gate has hydrated and the duo cookie is accepted. */
 export function SyncProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const active = pathname !== "/login";
   useEffect(() => {
-    if (pathname === "/login") return;
+    if (!active) return;
     return startGymSync();
-  }, [pathname]);
+  }, [active]);
   return children;
 }

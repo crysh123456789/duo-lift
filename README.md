@@ -28,9 +28,9 @@ Copy `.env.example` to `.env.local`. On Vercel set:
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://xivctpewomnpzcgbvczv.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Legacy anon JWT. Public by design. `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is accepted if the anon key is empty. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only. Bypasses RLS. Never prefix it with `NEXT_PUBLIC_`. |
-| `DUO_LIFT_SYNC_ENABLED` | `false` until Seguridad reviews `supabase/migrations/0002_duo_local_sync.sql`. `true` hydrates from Supabase and uploads this browser's localStorage. |
+| `DUO_LIFT_SYNC_ENABLED` | `true` on production (`duo-lift-gamma.vercel.app`) uploads this browser's localStorage after the duo cookie is valid. A failed round keeps the phone history and shows the error pill. `false` leaves the pill on Local. |
 
-Apply `supabase/migrations/0001_init.sql` through `0004_detach_custom_exercise_stations.sql` before enabling the flag. On project `xivctpewomnpzcgbvczv` those migrations are already applied. Anon and authenticated have no table grants; the draft policies are for review, not for production writes.
+Apply `supabase/migrations/0001_init.sql` through `0005_sync_apply_keep_history.sql` before enabling the flag. On project `xivctpewomnpzcgbvczv` those migrations are applied. Anon and authenticated have no table grants. `SUPABASE_SERVICE_ROLE_KEY` stays on the server; the browser only talks to `/api/sync`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
