@@ -1,0 +1,137 @@
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
+import {
+  historyPreserved,
+  missingWorkoutIds,
+  prepareSyncSnapshot,
+  serverKeptWorkouts,
+  tombstonesForRound,
+} from "./round.ts";
+
+const reminders = {
+  enabled: false,
+  lastFired: {},
+  meals: {
+    desayuno: { enabled: true, time: "08:00" },
+    mediaManana: { enabled: true, time: "11:00" },
+    almuerzo: { enabled: true, time: "13:00" },
+    mediaTarde: { enabled: true, time: "16:30" },
+    cena: { enabled: true, time: "20:00" },
+  },
+  gym: { enabled: true, time: "18:00" },
+};
+
+function gym(patch = {}) {
+  return {
+    users: [
+      {
+        id: "user-cristian",
+        email: "cristian@duo.lift",
+        displayName: "Cristian",
+        avatarHue: 78,
+        unitSystem: "kg",
+        heightCm: 167,
+        weightKg: 60,
+        nutritionGoal: "surplus_muscle",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+    duo: { id: "duo-1", name: "Duo Lift", inviteCode: "GYM2", createdAt: "2026-01-01T00:00:00.000Z" },
+    members: [{ duoId: "duo-1", userId: "user-cristian", role: "owner", joinedAt: "2026-01-01T00:00:00.000Z" }],
+    exercises: [],
+    workouts: [],
+    blocks: [],
+    stations: [],
+    sets: [],
+    reactions: [],
+    workingLoads: {},
+    foodDays: [],
+    reminders,
+    ...patch,
+  };
+}
+
+function workout(id, title = "Pecho") {
+  return {
+    id,
+    userId: "user-cristian",
+    duoId: "duo-1",
+    startedAt: "2026-10-01T18:00:00.000Z",
+    endedAt: null,
+    status: "in_progress",
+    notes: null,
+    perceivedExertion: null,
+    title,
+  };
+}
+
+function setRow(id, loggedAt = "2026-10-01T18:00:00.000Z") {
+  return {
+    id,
+    stationId: "st-1",
+    roundIndex: 1,
+    setIndex: 1,
+    reps: 8,
+    repsRight: null,
+    weightKg: 20,
+    durationSec: null,
+    rpe: null,
+    isWarmup: false,
+    completed: true,
+    loggedAt,
+  };
+}
+
+describe("first upload", () => {
+  test("keeps the phone workout when the server has a tombstone and no ack yet", () => {
+    const local = gym({ workouts: [workout("w-phone", "En el teléfono")] });
+    const remote = gym({ workouts: [] });
+    const stones = tombstonesForRound(true, local, [], [{ entity: "workouts", id: "w-phone" }], {});
+    assert.equal(stones.length, 0);
+    const prepared = prepareSyncSnapshot(local, remote, stones, { preferLocal: true, remindersFromServer: false });
+    assert.equal(prepared.keepsHistory, true);
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-phone"), true);
+    assert.equal(prepared.snapshot.workouts[0].title, "En el teléfono");
+  });
+
+  test("adds the other phone's workout without replacing this phone's row", () => {
+    const local = gym({ workouts: [workout("w-phone", "Teléfono")] });
+    const remote = gym({
+      workouts: [workout("w-phone", "Servidor"), workout("w-other", "Otro teléfono")],
+    });
+    const prepared = prepareSyncSnapshot(local, remote, [], { preferLocal: true, remindersFromServer: false });
+    assert.equal(prepared.snapshot.workouts.find((row) => row.id === "w-phone").title, "Teléfono");
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-other"), true);
+  });
+
+  test("refuses a snapshot that drops a workout without a tombstone", () => {
+    const before = gym({ workouts: [workout("w-phone")] });
+    const after = gym({ workouts: [] });
+    assert.equal(historyPreserved(before, after, []), false);
+    assert.equal(historyPreserved(before, after, [{ entity: "workouts", id: "w-phone" }]), true);
+  });
+
+  test("collapses a duplicate set slot and records a tombstone", () => {
+    const local = gym({
+      sets: [setRow("set-old", "2026-10-01T18:00:00.000Z"), setRow("set-new", "2026-10-02T18:00:00.000Z")],
+    });
+    const prepared = prepareSyncSnapshot(local, null, [], { preferLocal: true });
+    assert.deepEqual(
+      prepared.snapshot.sets.map((row) => row.id),
+      ["set-new"],
+    );
+    assert.deepEqual(prepared.tombstones, [{ entity: "sets", id: "set-old" }]);
+    assert.equal(prepared.keepsHistory, true);
+  });
+
+  test("server ack must include every workout that was sent", () => {
+    const sent = gym({ workouts: [workout("w-phone"), workout("w-other")] });
+    assert.equal(serverKeptWorkouts(sent, gym({ workouts: [workout("w-phone")] }), []), false);
+    assert.deepEqual(missingWorkoutIds(sent, gym({ workouts: [workout("w-phone")] }), []), ["w-other"]);
+    assert.equal(
+      serverKeptWorkouts(sent, gym({ workouts: [workout("w-phone")] }), [{ entity: "workouts", id: "w-other" }]),
+      true,
+    );
+    assert.equal(serverKeptWorkouts(sent, null, []), false);
+  });
+});

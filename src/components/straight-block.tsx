@@ -116,7 +116,7 @@ export function StraightBlock({
                 toggleSetComplete(set.id);
                 if (!wasDone) onLogged?.();
               }}
-              className={`mb-1 grid h-12 w-10 place-items-center rounded-xl ${
+              className={`mb-1 grid h-12 w-11 min-h-11 min-w-11 place-items-center rounded-xl ${
                 set.completed ? "bg-accent text-accent-ink" : "border border-line text-muted"
               }`}
               aria-label="Marcar serie"

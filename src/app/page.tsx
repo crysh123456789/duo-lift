@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Button, Panel } from "@/components/ui";
+import { Panel } from "@/components/ui";
 import { PageTitle } from "@/components/page-title";
 import { whenLabel, relativeTime } from "@/lib/format";
 import { foodDayFor, nextMealPrompt, todayStamp } from "@/lib/nutrition";
@@ -52,12 +52,11 @@ export default function DashboardPage() {
         <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">Inicio</p>
         <h1 className="text-3xl font-medium tracking-tight">Hola, {myName}</h1>
         <p className="mt-1 text-lg">{kicker}</p>
-        <Link href="/workout/new" className="mt-4 block">
-          <Button variant="primary" className="h-12 w-full sm:w-auto">
-            {inProgress
-              ? `Seguir ${inProgress.title?.toLowerCase() || "sesión"}`
-              : "Entrenar"}
-          </Button>
+        <Link
+          href="/workout/new"
+          className="mt-4 inline-flex h-12 w-full items-center justify-center rounded-xl bg-accent px-4 text-sm font-medium text-accent-ink transition-colors hover:bg-accent/90 sm:w-auto"
+        >
+          {inProgress ? `Seguir ${inProgress.title?.toLowerCase() || "sesión"}` : "Entrenar"}
         </Link>
         {inProgress ? (
           <p className="mt-2 text-xs text-muted">

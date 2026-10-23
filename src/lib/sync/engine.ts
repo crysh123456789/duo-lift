@@ -3,8 +3,9 @@
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { useGymStore } from "@/lib/store";
 import type { GymData } from "@/lib/types";
-import { ackMap, collectTombstones, mergeRemoteSnapshot, snapshotsMatch } from "./merge";
+import { ackMap, collectTombstones, snapshotsMatch } from "./merge";
 import { parseSnapshot, parseTombstones } from "./payload";
+import { prepareSyncSnapshot, serverKeptWorkouts, tombstonesForRound } from "./round";
 import { snapshotFromState } from "./snapshot";
 import { setSyncPhase } from "./status";
 import {
@@ -29,6 +30,7 @@ type SyncResponse = {
 
 let applying = false;
 let stopCurrent: (() => void) | null = null;
+let requestCycle: (() => void) | null = null;
 
 function currentSnapshot(): GymData {
   return snapshotFromState(useGymStore.getState());
@@ -36,13 +38,21 @@ function currentSnapshot(): GymData {
 
 function applySnapshot(next: GymData) {
   applying = true;
-  useGymStore.setState(next);
-  applying = false;
+  try {
+    useGymStore.setState(next);
+  } finally {
+    applying = false;
+  }
+}
+
+function logSync(message: string) {
+  console.warn(`[sync] ${message}`);
 }
 
 async function pull(duoId: string, signal: AbortSignal): Promise<SyncResponse> {
   const response = await fetch(`/api/sync?duoId=${encodeURIComponent(duoId)}`, {
     cache: "no-store",
+    credentials: "same-origin",
     signal,
   });
   const body = (await response.json().catch(() => ({}))) as SyncResponse;
@@ -51,13 +61,14 @@ async function pull(duoId: string, signal: AbortSignal): Promise<SyncResponse> {
     error.name = "Unauthorized";
     throw error;
   }
-  if (!response.ok) throw new Error(body.error || "sync_failed");
+  if (!response.ok || body.ok === false) throw new Error(body.error || "sync_failed");
   return body;
 }
 
-async function push(data: GymData, tombstones: Tombstone[], signal: AbortSignal) {
+async function push(data: GymData, tombstones: Tombstone[], signal: AbortSignal): Promise<SyncResponse> {
   const response = await fetch("/api/sync", {
     method: "PUT",
+    credentials: "same-origin",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ snapshot: data, tombstones }),
     signal,
@@ -67,10 +78,15 @@ async function push(data: GymData, tombstones: Tombstone[], signal: AbortSignal)
   return body;
 }
 
+/** Runs another round now. Used by the error pill. No-op until sync has started. */
+export function retryGymSync() {
+  requestCycle?.();
+}
+
 /**
- * Local Zustand persist stays the cache. When sync is enabled and the browser
- * is online, pull remote rows, union them with local (tombstones win), then
- * push the result. The first successful push migrates existing localStorage.
+ * Local Zustand persist stays the cache. The store is not replaced with the
+ * server copy until that upload has been acknowledged. A failed round leaves
+ * the phone history where it is.
  */
 export function startGymSync() {
   stopCurrent?.();
@@ -81,9 +97,11 @@ export function startGymSync() {
   let queued = false;
   let baseline = currentSnapshot();
 
-  // Construct the anon client so the browser wiring stays live. It cannot write:
-  // anon table grants are revoked until Seguridad reviews RLS.
-  createBrowserSupabaseClient();
+  try {
+    createBrowserSupabaseClient();
+  } catch {
+    // Table access stays closed. Uploads go through /api/sync.
+  }
 
   const schedule = () => {
     if (stopped) return;
@@ -106,8 +124,8 @@ export function startGymSync() {
         return;
       }
       setSyncPhase("syncing");
-      const local = currentSnapshot();
-      const remoteBody = await pull(local.duo.id, controller.signal);
+      const started = currentSnapshot();
+      const remoteBody = await pull(started.duo.id, controller.signal);
       if (stopped) return;
       if (!remoteBody.enabled) {
         setSyncPhase("local");
@@ -115,30 +133,58 @@ export function startGymSync() {
       }
       const remote = remoteBody.data ? parseSnapshot(remoteBody.data) : null;
       const remoteTombstones = parseTombstones(remoteBody.tombstones);
-      const remindersFromServer = remoteBody.remindersFromServer !== false && remote != null;
-      const merged = mergeRemoteSnapshot(local, remote, [...remoteTombstones, ...readTombstones()], {
-        ack: readAck(),
+      const migrated = Boolean(readSyncMeta().migratedAt);
+      const remindersFromServer = migrated && remoteBody.remindersFromServer !== false && remote != null;
+      const ack = readAck();
+      const options = {
+        ack,
         remindersFromServer,
-      });
-      if (!snapshotsMatch(merged, currentSnapshot(), !remindersFromServer)) {
-        applySnapshot(merged);
-        baseline = currentSnapshot();
+        preferLocal: !migrated,
+      };
+      const prepared = prepareSyncSnapshot(
+        started,
+        remote,
+        tombstonesForRound(migrated, started, readTombstones(), remoteTombstones, ack),
+        options,
+      );
+      if (!prepared.keepsHistory) {
+        logSync("refused an upload that would drop phone history");
+        setSyncPhase("error");
+        return;
       }
-      const after = currentSnapshot();
-      const stones = readTombstones();
       const ignoreReminders = !remindersFromServer;
+      const remoteDeletes = new Set(remoteTombstones.map((row) => `${row.entity}:${row.id}`));
+      const pendingDeletes = prepared.tombstones.filter((row) => !remoteDeletes.has(`${row.entity}:${row.id}`));
       const needsPush =
         remote == null ||
-        stones.length > 0 ||
-        !snapshotsMatch(after, remote ?? after, ignoreReminders);
+        pendingDeletes.length > 0 ||
+        !snapshotsMatch(prepared.snapshot, remote, ignoreReminders);
       if (needsPush) {
-        await push(after, stones, controller.signal);
+        const pushed = await push(prepared.snapshot, prepared.tombstones, controller.signal);
         if (stopped) return;
-        removeTombstones(stones);
-        const meta = readSyncMeta();
-        if (!meta.migratedAt) writeSyncMeta({ migratedAt: new Date().toISOString() });
+        const returned = pushed.data ? parseSnapshot(pushed.data) : null;
+        if (!serverKeptWorkouts(prepared.snapshot, returned, prepared.tombstones)) {
+          logSync("server ack did not include the phone workouts");
+          setSyncPhase("error");
+          return;
+        }
+        removeTombstones(prepared.tombstones);
       }
-      writeAck(ackMap(currentSnapshot()));
+      const latest = currentSnapshot();
+      const latestStones = tombstonesForRound(migrated, latest, readTombstones(), remoteTombstones, ack);
+      const followUp = snapshotsMatch(latest, started, ignoreReminders)
+        ? prepared
+        : prepareSyncSnapshot(latest, remote, latestStones, options);
+      if (!followUp.keepsHistory) {
+        logSync("refused to replace phone history after ack");
+        setSyncPhase("error");
+        return;
+      }
+      if (!snapshotsMatch(followUp.snapshot, latest, ignoreReminders)) {
+        applySnapshot(followUp.snapshot);
+      }
+      writeAck(ackMap(prepared.snapshot));
+      if (!readSyncMeta().migratedAt) writeSyncMeta({ migratedAt: new Date().toISOString() });
       baseline = currentSnapshot();
       setSyncPhase("saved");
     } catch (error) {
@@ -151,6 +197,7 @@ export function startGymSync() {
         setSyncPhase("offline");
         return;
       }
+      logSync(error instanceof Error ? error.message : "round failed");
       setSyncPhase("error");
     } finally {
       running = false;
@@ -160,6 +207,11 @@ export function startGymSync() {
       }
     }
   };
+
+  const retry = () => {
+    void cycle();
+  };
+  requestCycle = retry;
 
   const onStore = () => {
     if (applying) {
@@ -195,6 +247,7 @@ export function startGymSync() {
     window.removeEventListener("online", onOnline);
     window.removeEventListener("offline", onOffline);
     document.removeEventListener("visibilitychange", onVisible);
+    if (requestCycle === retry) requestCycle = null;
     if (stopCurrent === stop) stopCurrent = null;
   };
   stopCurrent = stop;

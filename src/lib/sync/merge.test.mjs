@@ -152,6 +152,46 @@ describe("mergeRemoteSnapshot", () => {
     assert.equal(dropped.sets.length, 0);
   });
 
+  test("preferLocal keeps the phone workout even when the server copy is newer", () => {
+    const local = gym({
+      workouts: [
+        {
+          id: "w-local",
+          userId: "user-cristian",
+          duoId: "duo-1",
+          startedAt: "2026-10-01T18:00:00.000Z",
+          endedAt: null,
+          status: "in_progress",
+          notes: "en el teléfono",
+          perceivedExertion: null,
+          title: "Pecho",
+        },
+      ],
+    });
+    const remote = gym({
+      workouts: [
+        {
+          id: "w-local",
+          userId: "user-cristian",
+          duoId: "duo-1",
+          startedAt: "2026-10-20T18:00:00.000Z",
+          endedAt: null,
+          status: "in_progress",
+          notes: null,
+          perceivedExertion: null,
+          title: "Reemplazado",
+        },
+      ],
+    });
+    const merged = mergeRemoteSnapshot(local, remote, [], {
+      seed: gym(),
+      preferLocal: true,
+      remindersFromServer: false,
+    });
+    assert.equal(merged.workouts.find((row) => row.id === "w-local").title, "Pecho");
+    assert.equal(merged.workouts.find((row) => row.id === "w-local").notes, "en el teléfono");
+  });
+
   test("collectTombstones records removed sets and not the ones that remain", () => {
     const set = {
       id: "set-1",

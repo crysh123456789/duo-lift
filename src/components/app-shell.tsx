@@ -35,9 +35,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <header className="sticky top-0 z-30 border-b border-line bg-background/90 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 md:pl-56">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2">
+        <div data-sync-row className="mx-auto flex min-h-14 max-w-5xl items-center justify-between gap-2 px-4 md:pl-56">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/" className="flex shrink-0 items-center gap-2">
               <span className="grid h-7 w-7 place-items-center rounded-md border border-accent/40 font-mono text-[10px] text-accent">
                 {users.map((u) => personInitial(u)).join("") || "DL"}
               </span>
@@ -74,6 +74,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
         </div>
+        <p className="border-t border-line px-4 py-2 text-xs text-muted sm:hidden md:pl-56">
+          Registrando como{" "}
+          <span className="font-medium text-foreground">{personName(users.find((user) => user.id === activeUserId)) || "tú"}</span>
+        </p>
       </header>
 
       <ReminderWatcher />
