@@ -189,6 +189,7 @@ export const foodDays = pgTable(
       .notNull()
       .references(() => duos.id, { onDelete: "cascade" }),
     date: text("date").notNull(),
+    /** Legacy slot: string note. v2 slot: { time, items, note }. Clients soft-migrate. */
     meals: jsonb("meals").notNull(),
     comment: text("comment").notNull().default(""),
     rawInput: text("raw_input"),

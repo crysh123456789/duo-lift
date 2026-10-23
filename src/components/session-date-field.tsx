@@ -8,17 +8,21 @@ export function SessionDateField({
   value,
   onChange,
   notice,
+  label = DATE_FIELD_LABEL,
+  hint = DATE_FIELD_HINT,
 }: {
   value: string;
   onChange: (stamp: string) => void;
   notice?: string;
+  label?: string;
+  hint?: string;
 }) {
   const hintId = useId();
   return (
     <div>
       <label className="block">
         <span className="mb-1 block text-xs uppercase tracking-wider text-muted">
-          {DATE_FIELD_LABEL}
+          {label}
         </span>
         <input
           type="date"
@@ -33,7 +37,7 @@ export function SessionDateField({
         />
       </label>
       <p id={hintId} className="mt-1 text-xs text-muted">
-        {DATE_FIELD_HINT}
+        {hint}
       </p>
       {notice ? (
         <p className="mt-1 text-sm text-accent" role="status">

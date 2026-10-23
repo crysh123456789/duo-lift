@@ -25,7 +25,27 @@ export type MealSlot =
   | "mediaTarde"
   | "cena";
 
-export type MealLog = Record<MealSlot, string>;
+/** One food inside a meal. kcal is derived (4P + 4C + 9G), not stored. */
+export type MealItem = {
+  id: string;
+  name: string;
+  grams: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
+};
+
+/**
+ * One of the five slots. Legacy days stored a string in this position;
+ * `normalizeMealEntry` turns that string into `note` and leaves items empty.
+ */
+export type MealEntry = {
+  time: string | null;
+  items: MealItem[];
+  note: string;
+};
+
+export type MealLog = Record<MealSlot, MealEntry>;
 
 export type FoodDay = {
   id: string;

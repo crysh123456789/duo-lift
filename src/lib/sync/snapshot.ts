@@ -1,3 +1,4 @@
+import { normalizeFoodDay } from "@/lib/nutrition";
 import { DEFAULT_REMINDERS } from "@/lib/reminders";
 import type { GymData, ReminderSettings } from "@/lib/types";
 import { stableStringify } from "./stable";
@@ -55,7 +56,7 @@ export function canonicalize(data: GymData): GymData {
     sets: byId(data.sets),
     reactions: byId(data.reactions),
     workingLoads: sortRecord(data.workingLoads ?? {}),
-    foodDays: byId(data.foodDays ?? []),
+    foodDays: byId((data.foodDays ?? []).map((day) => normalizeFoodDay(day))),
     reminders: {
       ...reminders,
       lastFired: sortRecord(reminders.lastFired),

@@ -30,7 +30,9 @@ Copy `.env.example` to `.env.local`. On Vercel set:
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only. Bypasses RLS. Never prefix it with `NEXT_PUBLIC_`. |
 | `DUO_LIFT_SYNC_ENABLED` | `true` on production (`duo-lift-gamma.vercel.app`) uploads this browser's localStorage after the duo cookie is valid. A failed round keeps the phone history and shows the error pill. `false` leaves the pill on Local. |
 
-Apply `supabase/migrations/0001_init.sql` through `0005_sync_apply_keep_history.sql` before enabling the flag. On project `xivctpewomnpzcgbvczv` those migrations are applied. Anon and authenticated have no table grants. `SUPABASE_SERVICE_ROLE_KEY` stays on the server; the browser only talks to `/api/sync`.
+Apply `supabase/migrations/0001_init.sql` through `0006_nutrition_meals_v2.sql` before enabling the flag. On project `xivctpewomnpzcgbvczv` migrations through `0005` are applied; `0006` only comments `food_days.meals` and does not rewrite rows. Anon and authenticated have no table grants. `SUPABASE_SERVICE_ROLE_KEY` stays on the server; the browser only talks to `/api/sync`.
+
+The diary stores five slots in that jsonb column. Older days keep a string per slot; the app reads it as the meal note. New days store `{ time, items, note }` (protein, carbs, fat, grams). Kilocalories are derived (`4P + 4C + 9G`) and are not a column. The same payload syncs through `/api/sync` when `DUO_LIFT_SYNC_ENABLED` is on.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

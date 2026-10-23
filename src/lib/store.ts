@@ -17,7 +17,7 @@ import type {
   SetLog,
   User,
 } from "./types";
-import { emptyMeals, nutritionComment, parseMealDump, todayStamp } from "./nutrition";
+import { todayStamp, upsertFoodDay } from "./nutrition";
 import {
   atLocalStamp,
   isValidStamp,
@@ -527,30 +527,16 @@ export const useGymStore = create<GymStore>()(
         if (!duoUnlocked()) return "";
         const state = get();
         const user = state.users.find((u) => u.id === state.activeUserId);
-        const existing = (state.foodDays ?? []).find(
-          (d) => d.userId === state.activeUserId && d.date === date,
-        );
-        const parsed = rawInput
-          ? parseMealDump(rawInput, meals ?? existing?.meals ?? emptyMeals())
-          : { ...(existing?.meals ?? emptyMeals()), ...(meals ?? {}) };
-        const comment = user ? nutritionComment(user, parsed) : "";
-        const id = existing?.id ?? nid();
-        const row = {
-          id,
+        const { foodDays, saved } = upsertFoodDay({
+          foodDays: state.foodDays,
+          user,
           userId: state.activeUserId,
           date,
-          meals: parsed,
-          comment,
-          rawInput: rawInput?.trim() || existing?.rawInput || null,
-          updatedAt: new Date().toISOString(),
-        };
-        const foodDays = state.foodDays ?? [];
-        set({
-          foodDays: existing
-            ? foodDays.map((d) => (d.id === existing.id ? row : d))
-            : [...foodDays, row],
+          meals,
+          rawInput,
         });
-        return id;
+        set({ foodDays });
+        return saved.id;
       },
 
       updateReminders: (patch) =>
@@ -583,7 +569,7 @@ export const useGymStore = create<GymStore>()(
     }),
     {
       name: "duo-lift-v2",
-      version: 7,
+      version: 8,
       migrate: (persistedState, fromVersion) => {
         const persisted = (persistedState ?? {}) as Partial<GymStore>;
         const cleaned = fromVersion < 6 ? stripLegacySeed(persisted) : persisted;
