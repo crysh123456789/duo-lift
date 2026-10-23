@@ -17,7 +17,7 @@ export function SessionDateField({
   return (
     <div>
       <label className="block">
-        <span className="mb-1 block text-[11px] uppercase tracking-wider text-muted">
+        <span className="mb-1 block text-xs uppercase tracking-wider text-muted">
           {DATE_FIELD_LABEL}
         </span>
         <input
