@@ -1,5 +1,5 @@
 import type { FoodDay, ReminderSettings, Workout } from "./types";
-import { MEAL_SLOTS, todayStamp } from "./nutrition";
+import { MEAL_SLOTS, mealLogged, todayStamp } from "./nutrition";
 
 export const DEFAULT_REMINDERS: ReminderSettings = {
   enabled: false,
@@ -61,7 +61,7 @@ export function dueReminders(opts: {
     if (nowMin < parseTime(cfg.time)) continue;
     const key = `${userId}:${date}:${slot.id}`;
     if (settings.lastFired[key]) continue;
-    if (todayFood?.meals[slot.id]?.trim()) continue;
+    if (mealLogged(todayFood?.meals[slot.id])) continue;
     due.push({
       key,
       title: `Hora de ${slot.label.toLowerCase()}`,

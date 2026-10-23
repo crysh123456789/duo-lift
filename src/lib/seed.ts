@@ -1,6 +1,7 @@
 import { subDays } from "date-fns";
 import { IDS } from "./ids";
 import { loadKey } from "./loads";
+import { normalizeFoodDays } from "./nutrition";
 import { DEFAULT_REMINDERS } from "./reminders";
 import type {
   BlockStation,
@@ -560,7 +561,7 @@ export function mergeGymData(
     sets: mergeById(seed.sets, prev.sets),
     reactions: mergeById(seed.reactions, prev.reactions),
     workingLoads: workingLoadsMerged,
-    foodDays: mergeById(seed.foodDays, prev.foodDays),
+    foodDays: normalizeFoodDays(mergeById(seed.foodDays, prev.foodDays)),
     reminders: {
       ...seed.reminders,
       ...(prev.reminders ?? {}),

@@ -1,4 +1,5 @@
 import { loadKey } from "@/lib/loads";
+import { normalizeMealLog } from "@/lib/nutrition";
 import type {
   BlockKind,
   Equipment,
@@ -106,7 +107,8 @@ export type FoodDayRow = {
   id: string;
   user_id: string;
   date: string;
-  meals: GymData["foodDays"][number]["meals"] | null;
+  /** Legacy string slots or v2 `{ time, items, note }` objects. */
+  meals: unknown;
   comment: string | null;
   raw_input: string | null;
   updated_at: string;
@@ -266,13 +268,7 @@ export function gymFromRows(tables: RemoteTables): { data: GymData; remindersFro
       id: row.id,
       userId: row.user_id,
       date: row.date,
-      meals: row.meals ?? {
-        desayuno: "",
-        mediaManana: "",
-        almuerzo: "",
-        mediaTarde: "",
-        cena: "",
-      },
+      meals: normalizeMealLog(row.meals),
       comment: row.comment ?? "",
       rawInput: row.raw_input,
       updatedAt: iso(row.updated_at) ?? new Date(0).toISOString(),
