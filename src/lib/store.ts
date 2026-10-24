@@ -17,7 +17,7 @@ import type {
   SetLog,
   User,
 } from "./types";
-import { todayStamp, upsertFoodDay } from "./nutrition";
+import { KCAL_TARGET_MAX, PROTEIN_TARGET_MAX, clampDailyTarget, todayStamp, upsertFoodDay } from "./nutrition";
 import {
   atLocalStamp,
   isValidStamp,
@@ -39,7 +39,9 @@ type GymStore = GymData & {
   switchUser: (userId: string) => void;
   updateUser: (
     userId: string,
-    patch: Partial<Pick<User, "displayName" | "unitSystem" | "heightCm" | "weightKg" | "nutritionGoal">>,
+    patch: Partial<
+      Pick<User, "displayName" | "unitSystem" | "heightCm" | "weightKg" | "nutritionGoal" | "proteinTargetG" | "kcalTarget">
+    >,
   ) => void;
   startWorkout: (opts?: { date?: string }) => string;
   startSplitDay: (dayId?: SplitDay["id"], opts?: { date?: string }) => string;
@@ -97,7 +99,13 @@ export const useGymStore = create<GymStore>()(
 
       updateUser: (userId, patch) =>
         set((state) => ({
-          users: state.users.map((u) => (u.id === userId ? { ...u, ...patch } : u)),
+          users: state.users.map((u) => {
+            if (u.id !== userId) return u;
+            const next = { ...u, ...patch };
+            if ("proteinTargetG" in patch) next.proteinTargetG = clampDailyTarget(patch.proteinTargetG, PROTEIN_TARGET_MAX);
+            if ("kcalTarget" in patch) next.kcalTarget = clampDailyTarget(patch.kcalTarget, KCAL_TARGET_MAX);
+            return next;
+          }),
         })),
 
       startWorkout: (opts) => {
@@ -581,6 +589,7 @@ export const useGymStore = create<GymStore>()(
           merged.stations = dropped.stations ?? [];
           merged.sets = dropped.sets ?? [];
           merged.reactions = dropped.reactions ?? [];
+          merged.foodDays = dropped.foodDays ?? merged.foodDays ?? [];
         }
         if (fromVersion < 7) {
           const seed = createSeed();

@@ -34,7 +34,9 @@ export async function readOwn(
     rows<RemoteTables["users"][number]>(
       client
         .from("users")
-        .select("id, email, display_name, avatar_hue, unit_system, height_cm, weight_kg, nutrition_goal, created_at")
+        .select(
+          "id, email, display_name, avatar_hue, unit_system, height_cm, weight_kg, nutrition_goal, protein_target_g, kcal_target, created_at",
+        )
         .eq("id", userId),
     ),
     rows<RemoteTables["exercises"][number]>(

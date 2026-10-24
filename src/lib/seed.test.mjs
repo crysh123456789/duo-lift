@@ -11,6 +11,7 @@ import {
   seedWorkoutWasEdited,
   stripLegacySeed,
 } from "./seed.ts";
+import { collectTombstones } from "./sync/merge.ts";
 
 function workoutIdForSet(data, setId) {
   const set = data.sets.find((row) => row.id === setId);
@@ -100,6 +101,41 @@ describe("legacy seed cleanup", () => {
     edited.updatedAt = "2026-02-02T19:00:00.000Z";
     assert.equal(isUntouchedDemo(corrected, "w-cr-d5", seed), false);
     assert.equal(omitDemo(corrected, seed).workouts.some((row) => row.id === "w-cr-d5"), true);
+  });
+
+  test("keeps food days through seed cleanup and does not tombstone them", () => {
+    const seed = createSeed();
+    const foodDays = [
+      {
+        id: "food-cr",
+        userId: "user-cristian",
+        date: "2026-10-20",
+        meals: {},
+        comment: "",
+        rawInput: null,
+        updatedAt: "2026-10-20T12:00:00.000Z",
+      },
+      {
+        id: "food-am",
+        userId: "user-amigo",
+        date: "2026-10-20",
+        meals: {},
+        comment: "",
+        rawInput: null,
+        updatedAt: "2026-10-20T12:00:00.000Z",
+      },
+    ];
+    const prev = { ...seed, foodDays };
+    const stripped = stripLegacySeed(prev, seed);
+    assert.deepEqual(
+      stripped.foodDays.map((row) => row.id),
+      ["food-cr", "food-am"],
+    );
+    const next = { ...prev, ...stripped, foodDays: stripped.foodDays ?? [] };
+    assert.equal(
+      collectTombstones(prev, next).some((row) => row.entity === "foodDays"),
+      false,
+    );
   });
 
   test("a new account seed has no example history and no example loads", () => {

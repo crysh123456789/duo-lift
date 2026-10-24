@@ -106,6 +106,8 @@ export function rewriteLegacyOwner<T extends GymData>(data: T, fromId: string, t
               heightCm: row.heightCm ?? from.heightCm,
               weightKg: row.weightKg ?? from.weightKg,
               nutritionGoal: row.nutritionGoal ?? from.nutritionGoal,
+              proteinTargetG: row.proteinTargetG ?? from.proteinTargetG ?? null,
+              kcalTarget: row.kcalTarget ?? from.kcalTarget ?? null,
               unitSystem: row.unitSystem || from.unitSystem,
             }
           : row,
@@ -189,6 +191,8 @@ export function adoptAccount<T extends GymData>(data: T, profile: AccountProfile
           heightCm: profile.heightCm,
           weightKg: profile.weightKg,
           nutritionGoal: "surplus_muscle" as const,
+          proteinTargetG: null,
+          kcalTarget: null,
           createdAt: new Date().toISOString(),
         },
       ];

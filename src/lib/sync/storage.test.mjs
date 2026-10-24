@@ -27,12 +27,13 @@ describe("legacy tombstone queue", () => {
         { entity: "sets", id: "w-cr-d5-b1-s1-1" },
         { entity: "reactions", id: "rx-am-d1-fire" },
         { entity: "sets", id: "set-user" },
+        { entity: "foodDays", id: "food-cr" },
       ]),
     );
     setSyncStorageUser(userId);
     seedLegacyTombstones(
       userId,
-      new Set(["w-cr-d5", "w-am-d1", "w-cr-d5-b1-s1-1", "rx-am-d1-fire", "set-user"]),
+      new Set(["w-cr-d5", "w-am-d1", "w-cr-d5-b1-s1-1", "rx-am-d1-fire", "set-user", "food-cr"]),
     );
     assert.deepEqual(readTombstones(), [{ entity: "sets", id: "set-user" }]);
   });

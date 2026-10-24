@@ -173,6 +173,62 @@ describe("first upload", () => {
     assert.equal(prepared.keepsHistory, true);
   });
 
+  test("does not upload a food day tombstone while that day is still on the phone", () => {
+    const day = {
+      id: "food-1",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: {},
+      comment: "",
+      rawInput: null,
+      updatedAt: "2026-10-20T12:00:00.000Z",
+    };
+    const local = gym({ foodDays: [day] });
+    const stones = tombstonesForRound(true, local, [{ entity: "foodDays", id: "food-1" }], [], {});
+    assert.equal(stones.length, 0);
+    const prepared = prepareSyncSnapshot(local, gym(), [{ entity: "foodDays", id: "food-1" }], {
+      preferLocal: true,
+      remindersFromServer: false,
+    });
+    assert.equal(prepared.tombstones.some((row) => row.entity === "foodDays"), false);
+    assert.equal(prepared.snapshot.foodDays.some((row) => row.id === "food-1"), true);
+    assert.equal(prepared.keepsHistory, true);
+  });
+
+  test("tombstones only a duplicate food day for the same date", () => {
+    const older = {
+      id: "food-old",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: {},
+      comment: "",
+      rawInput: null,
+      updatedAt: "2026-10-20T10:00:00.000Z",
+    };
+    const newer = { ...older, id: "food-new", updatedAt: "2026-10-20T12:00:00.000Z" };
+    const prepared = prepareSyncSnapshot(gym({ foodDays: [older, newer] }), null, [], { preferLocal: true });
+    assert.deepEqual(
+      prepared.snapshot.foodDays.map((row) => row.id),
+      ["food-new"],
+    );
+    assert.deepEqual(prepared.tombstones, [{ entity: "foodDays", id: "food-old" }]);
+    assert.equal(prepared.keepsHistory, true);
+  });
+
+  test("refuses a snapshot that drops a food day without a tombstone", () => {
+    const day = {
+      id: "food-1",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: {},
+      comment: "",
+      rawInput: null,
+      updatedAt: "2026-10-20T12:00:00.000Z",
+    };
+    assert.equal(historyPreserved(gym({ foodDays: [day] }), gym(), []), false);
+    assert.equal(historyPreserved(gym({ foodDays: [day] }), gym(), [{ entity: "foodDays", id: "food-1" }]), true);
+  });
+
   test("untouched demo stays out of the upload and does not become a delete", () => {
     const local = createSeed();
     const prepared = prepareSyncSnapshot(

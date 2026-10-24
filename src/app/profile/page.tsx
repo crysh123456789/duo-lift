@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { ReminderSettings } from "@/components/reminder-settings";
 import { PageTitle } from "@/components/page-title";
-import { Button, Field, Panel } from "@/components/ui";
+import { Button, Field, NumberField, Panel } from "@/components/ui";
 import { bumpAuthEpoch, setAuthPhase } from "@/lib/auth/phase";
 import { bestWeight, exerciseByName } from "@/lib/metrics";
 import { personName } from "@/lib/people";
@@ -88,6 +88,22 @@ export default function ProfilePage() {
               className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 font-mono outline-none focus:border-accent"
             />
           </Field>
+        </div>
+        <p className="text-xs uppercase tracking-wider text-muted">Metas del diario</p>
+        <p className="text-sm text-muted">
+          Proteína y calorías a mano, por persona. No salen del peso. Si la proteína queda vacía, el diario muestra P x/—.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <NumberField
+            label="Proteína (g/día)"
+            value={me.proteinTargetG ?? null}
+            onChange={(proteinTargetG) => updateUser(me.id, { proteinTargetG })}
+          />
+          <NumberField
+            label="Calorías (kcal/día)"
+            value={me.kcalTarget ?? null}
+            onChange={(kcalTarget) => updateUser(me.id, { kcalTarget })}
+          />
         </div>
       </Panel>
 

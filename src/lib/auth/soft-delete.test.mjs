@@ -65,4 +65,25 @@ describe("soft-delete migration", () => {
     assert.match(sql, /revoke delete on table/);
     assert.equal(/for delete to authenticated/.test(sql), false);
   });
+
+  test("0009 adds manual targets without editing 0007 or 0008", () => {
+    const targets = readFileSync(
+      new URL("../../../supabase/migrations/0009_nutrition_targets.sql", import.meta.url),
+      "utf8",
+    );
+    assert.equal(/protein_target_g/.test(sql), false);
+    assert.equal(/protein_target_g/.test(previous), false);
+    assert.equal(/kcal_target/.test(sql), false);
+    assert.match(targets, /add column if not exists protein_target_g integer/);
+    assert.match(targets, /add column if not exists kcal_target integer/);
+    assert.match(targets, /when src.protein_target_g is null then null/);
+    assert.match(targets, /src.protein_target_g between 1 and 1000/);
+    assert.match(targets, /src.kcal_target between 1 and 20000/);
+    assert.equal(/insert into public\.users/i.test(targets), false);
+    assert.equal(/delete from public\./i.test(targets), false);
+    assert.equal((targets.match(/create or replace function public\.sync_apply/g) ?? []).length, 1);
+    const guard = targets.indexOf("if rec.entity_id like 'w-cr-%' or rec.entity_id like 'w-am-%' then");
+    const tombstone = targets.indexOf("insert into public.user_tombstones");
+    assert.equal(guard >= 0 && tombstone > guard, true);
+  });
 });

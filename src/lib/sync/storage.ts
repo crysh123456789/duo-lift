@@ -51,7 +51,9 @@ export function seedLegacyTombstones(userId: string, ownedIds: ReadonlySet<strin
   } catch {
     legacy = [];
   }
-  const mine = legacy.filter((row) => ownedIds.has(row.id) && !isDemoTombstone(row));
+  const mine = legacy.filter(
+    (row) => ownedIds.has(row.id) && row.entity !== "foodDays" && !isDemoTombstone(row),
+  );
   if (mine.length > 0) addTombstones(mine);
 }
 

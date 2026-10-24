@@ -60,6 +60,28 @@ export function proteinTargetG(weightKg: number) {
   return Math.round(weightKg * 1.8);
 }
 
+/** Bounds stored by sync_apply. Out of range is treated as unset. */
+export const PROTEIN_TARGET_MAX = 1000;
+export const KCAL_TARGET_MAX = 20000;
+
+export function clampDailyTarget(value: unknown, max: number): number | null {
+  if (value == null || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  if (rounded < 1 || rounded > max) return null;
+  return rounded;
+}
+
+/** Diary denominator. Weight-derived grams are a later phase and are not used here. */
+export function manualProteinGoal(user: { proteinTargetG?: number | null } | null | undefined): number | null {
+  return clampDailyTarget(user?.proteinTargetG, PROTEIN_TARGET_MAX);
+}
+
+export function manualKcalGoal(user: { kcalTarget?: number | null } | null | undefined): number | null {
+  return clampDailyTarget(user?.kcalTarget, KCAL_TARGET_MAX);
+}
+
 function finiteNonNegative(value: unknown): number | null {
   if (value == null || value === "") return null;
   const parsed = typeof value === "number" ? value : Number(value);
@@ -411,15 +433,15 @@ export function nutritionComment(user: User, meals: unknown): string {
   const gaps = flags.gaps.map((slot) => slot.label.toLowerCase());
   const bits: string[] = [];
 
+  const manual = manualProteinGoal(user);
   if (user.nutritionGoal === "surplus_muscle") {
     if (hasMacros) {
       const protein = Math.round(totals.proteinG);
-      if (user.weightKg) {
-        const target = proteinTargetG(user.weightKg);
+      if (manual != null) {
         bits.push(
-          protein >= target
-            ? `Proteína de hoy: ${protein} g, en la meta de ${target} g para recuperar músculo.`
-            : `Proteína de hoy: ${protein} g de ${target} g. Aún cabe más para ganar músculo.`,
+          protein >= manual
+            ? `Proteína de hoy: ${protein} g, en la meta de ${manual} g para recuperar músculo.`
+            : `Proteína de hoy: ${protein} g de ${manual} g. Aún cabe más para ganar músculo.`,
         );
       } else if (flags.protein) {
         bits.push("La proteína aparece en los alimentos, eso ayuda a la masa muscular.");
@@ -459,9 +481,12 @@ export function nutritionComment(user: User, meals: unknown): string {
     bits.push(`Si hay hueco, un extra en ${gaps[0]?.toLowerCase()} suma calorías sin forzar el estómago.`);
   }
 
-  if (user.weightKg && !hasMacros) {
+  if (!hasMacros && manual != null) {
+    const kcal = manualKcalGoal(user);
     bits.push(
-      `Objetivo: ~${proteinTargetG(user.weightKg)} g de proteína al día y un superávit suave (300–500 kcal) con entrenos de fuerza.`,
+      kcal != null
+        ? `Objetivo: ${manual} g de proteína y ${kcal} kcal al día, con entrenos de fuerza.`
+        : `Objetivo: ${manual} g de proteína al día y un superávit suave (300–500 kcal) con entrenos de fuerza.`,
     );
   }
 

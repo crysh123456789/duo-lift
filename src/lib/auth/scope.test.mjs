@@ -103,5 +103,50 @@ describe("per-person gym scope", () => {
     assert.equal(next.users.some((row) => row.id === "user-amigo"), true);
     assert.equal(next.users.some((row) => row.id === "user-cristian"), true);
     assert.equal(next.users.find((row) => row.id === AUTH_A)?.displayName, "Crysh");
+    assert.equal(next.users.find((row) => row.id === AUTH_A)?.proteinTargetG ?? null, null);
+    assert.equal(next.users.find((row) => row.id === AUTH_A)?.kcalTarget ?? null, null);
+  });
+
+  test("claim keeps food days, retags only the claimed person, and copies manual goals", () => {
+    const data = withRealHistory(createSeed());
+    data.foodDays = [
+      {
+        id: "food-cr",
+        userId: "user-cristian",
+        date: "2026-10-20",
+        meals: {},
+        comment: "",
+        rawInput: null,
+        updatedAt: "2026-10-20T12:00:00.000Z",
+      },
+      {
+        id: "food-am",
+        userId: "user-amigo",
+        date: "2026-10-20",
+        meals: {},
+        comment: "kviedes",
+        rawInput: null,
+        updatedAt: "2026-10-20T12:00:00.000Z",
+      },
+    ];
+    data.users = data.users.map((user) =>
+      user.id === "user-cristian" ? { ...user, proteinTargetG: 90, kcalTarget: 2200 } : user,
+    );
+    const next = attachClaimedHistory(
+      data,
+      {
+        id: AUTH_A,
+        email: "crysh@example.com",
+        displayName: "Crysh",
+        heightCm: 167,
+        weightKg: 60,
+      },
+      "cristian",
+    );
+    assert.equal(next.foodDays.find((row) => row.id === "food-cr").userId, AUTH_A);
+    assert.equal(next.foodDays.find((row) => row.id === "food-am").userId, "user-amigo");
+    assert.equal(next.users.find((row) => row.id === AUTH_A).proteinTargetG, 90);
+    assert.equal(next.users.find((row) => row.id === AUTH_A).kcalTarget, 2200);
+    assert.equal(next.users.find((row) => row.id === "user-amigo").proteinTargetG ?? null, null);
   });
 });

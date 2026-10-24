@@ -311,6 +311,8 @@ describe("gymFromRows", () => {
     });
     assert.equal(remindersFromServer, false);
     assert.equal(data.users[0].weightKg, 60);
+    assert.equal(data.users[0].proteinTargetG, null);
+    assert.equal(data.users[0].kcalTarget, null);
     assert.equal(data.users[0].createdAt, "2026-01-01T00:00:00.000Z");
     assert.equal(data.sets[0].weightKg, 22.5);
     assert.equal(data.sets[0].loggedAt, "2026-10-03T18:00:00.000Z");

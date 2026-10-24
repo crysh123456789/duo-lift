@@ -24,8 +24,8 @@ import {
   mealTimeLabel,
   mealTotals,
   nextMealPrompt,
+  manualProteinGoal,
   normalizeMealLog,
-  proteinTargetG,
   shiftStamp,
   todayStamp,
 } from "@/lib/nutrition";
@@ -129,7 +129,7 @@ function DayScreen({
   const saved = foodDayFor(data, data.activeUserId, date);
   const meals = saved?.meals ?? normalizeMealLog(undefined);
   const totals = dayTotals(meals);
-  const goal = me?.weightKg ? proteinTargetG(me.weightKg) : null;
+  const goal = manualProteinGoal(me);
   const prompt = nextMealPrompt(meals);
   const quickSlot = prompt?.id ?? "cena";
   const quickLabel = MEAL_SLOTS.find((slot) => slot.id === quickSlot)?.label ?? "Cena";
@@ -210,7 +210,7 @@ function DayScreen({
 function HistoryList({ selected, onOpen }: { selected: string; onOpen: (stamp: string) => void }) {
   const data = useGymStore();
   const me = data.users.find((user) => user.id === data.activeUserId);
-  const goal = me?.weightKg ? proteinTargetG(me.weightKg) : null;
+  const goal = manualProteinGoal(me);
   const mine = [...(data.foodDays ?? [])]
     .filter((day) => day.userId === data.activeUserId && day.date !== selected)
     .map((day) => ({ ...day, meals: normalizeMealLog(day.meals) }))
@@ -289,7 +289,7 @@ function MealEditor({
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [legacyNote] = useState(() => meals[slot].note.trim().length > 0);
   const [noteOpen, setNoteOpen] = useState(false);
-  const goal = me?.weightKg ? proteinTargetG(me.weightKg) : null;
+  const goal = manualProteinGoal(me);
   const proteinLabel = date === todayStamp() ? PROTEIN_TODAY_LABEL : "Proteína";
   const draftMeals: MealLog = { ...meals, [slot]: entry };
   const showNote = legacyNote || noteOpen || entry.note.trim().length > 0;

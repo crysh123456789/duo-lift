@@ -66,6 +66,10 @@ export type User = {
   heightCm: number | null;
   weightKg: number | null;
   nutritionGoal: NutritionGoal | null;
+  /** Manual grams of protein per day. Null until the person sets it. Independent of weight. */
+  proteinTargetG?: number | null;
+  /** Manual kilocalories per day. Null until the person sets it. Independent of weight. */
+  kcalTarget?: number | null;
   createdAt: string;
 };
 

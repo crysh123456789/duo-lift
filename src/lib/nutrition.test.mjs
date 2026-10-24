@@ -6,10 +6,12 @@ import {
   emptyMeals,
   formatTotals,
   macroKcal,
+  manualProteinGoal,
   mealSummary,
   mealTotals,
   normalizeMealEntry,
   normalizeMealLog,
+  nutritionComment,
   parseMealDump,
   proteinTargetG,
   upsertFoodDay,
@@ -107,6 +109,72 @@ describe("day totals", () => {
     assert.equal(meal.proteinG, 0);
     assert.equal(meal.carbsG, 20);
     assert.equal(meal.kcal, 80);
+  });
+});
+
+describe("manual nutrition goals", () => {
+  test("diary uses the manual protein goal and ignores weight", () => {
+    assert.equal(manualProteinGoal({ proteinTargetG: 90, weightKg: 60 }), 90);
+    assert.equal(manualProteinGoal({ weightKg: 60 }), null);
+    assert.equal(manualProteinGoal({ proteinTargetG: 0, weightKg: 60 }), null);
+    assert.equal(proteinTargetG(60), 108);
+    const day = dayTotals(breakfastLog());
+    assert.equal(formatTotals(day, manualProteinGoal({ weightKg: 60 })), "P 28/— · C 51 · G 21 · 505 kcal");
+    assert.equal(formatTotals(day, manualProteinGoal({ proteinTargetG: 90, weightKg: 60 })), "P 28/90 · C 51 · G 21 · 505 kcal");
+
+    const withGoal = nutritionComment({ ...cristian, proteinTargetG: 90 }, breakfastLog());
+    assert.match(withGoal, /90 g/);
+    assert.equal(/108/.test(withGoal), false);
+    const unset = nutritionComment(cristian, breakfastLog());
+    assert.equal(/108/.test(unset), false);
+    const noteOnly = { ...emptyMeals(), desayuno: { time: "08:00", items: [], note: "avena" } };
+    assert.equal(/108/.test(nutritionComment(cristian, noteOnly)), false);
+    assert.match(nutritionComment({ ...cristian, proteinTargetG: 90, kcalTarget: 2200 }, noteOnly), /90 g de proteína y 2200 kcal/);
+  });
+
+  test("manual targets round-trip through the sync payload", () => {
+    const user = {
+      ...cristian,
+      id: "11111111-1111-4111-8111-111111111111",
+      proteinTargetG: 90,
+      kcalTarget: 2200,
+    };
+    const payload = toSyncPayload(gym({ users: [user] }), []);
+    assert.equal(payload.users[0].protein_target_g, 90);
+    assert.equal(payload.users[0].kcal_target, 2200);
+    const cleared = toSyncPayload(gym({ users: [cristian] }), []);
+    assert.equal(cleared.users[0].protein_target_g, null);
+    assert.equal(cleared.users[0].kcal_target, null);
+    const { data } = gymFromRows({
+      duo: { id: "duo-1", name: "Duo Lift", invite_code: "GYM2", created_at: "2026-01-01T00:00:00.000Z" },
+      users: [
+        {
+          id: user.id,
+          email: user.email,
+          display_name: user.displayName,
+          avatar_hue: 78,
+          unit_system: "kg",
+          height_cm: "167",
+          weight_kg: "60",
+          nutrition_goal: "surplus_muscle",
+          protein_target_g: "90",
+          kcal_target: "2200",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      members: [],
+      exercises: [],
+      workouts: [],
+      blocks: [],
+      stations: [],
+      sets: [],
+      reactions: [],
+      foodDays: [],
+      loads: [],
+      reminders: null,
+    });
+    assert.equal(data.users[0].proteinTargetG, 90);
+    assert.equal(data.users[0].kcalTarget, 2200);
   });
 });
 

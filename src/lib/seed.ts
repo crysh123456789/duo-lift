@@ -470,6 +470,8 @@ export function createSeed(): GymData {
         heightCm: 167,
         weightKg: 60,
         nutritionGoal: "surplus_muscle",
+        proteinTargetG: null,
+        kcalTarget: null,
         createdAt,
       },
       {
@@ -481,6 +483,8 @@ export function createSeed(): GymData {
         heightCm: null,
         weightKg: null,
         nutritionGoal: "surplus_muscle",
+        proteinTargetG: null,
+        kcalTarget: null,
         createdAt,
       },
     ],
@@ -750,6 +754,7 @@ export function stripLegacySeed(data: Partial<GymData>, seed: GymData = createSe
     sets: (data.sets ?? []).filter((s) => keepStations.has(s.stationId)),
     reactions: (data.reactions ?? []).filter((r) => keepWorkouts.has(r.workoutId)),
     workingLoads: {},
+    foodDays: data.foodDays ?? [],
   };
 }
 
@@ -809,6 +814,8 @@ function mergeUsers(seed: GymData["users"], existing: GymData["users"] | undefin
       heightCm: user.heightCm ?? fromSeed?.heightCm ?? null,
       weightKg: user.weightKg ?? fromSeed?.weightKg ?? null,
       nutritionGoal: user.nutritionGoal ?? fromSeed?.nutritionGoal ?? "surplus_muscle",
+      proteinTargetG: user.proteinTargetG ?? fromSeed?.proteinTargetG ?? null,
+      kcalTarget: user.kcalTarget ?? fromSeed?.kcalTarget ?? null,
     };
   });
 }
