@@ -38,6 +38,8 @@ describe("auth copy", () => {
     assert.equal(claimErrorMessage({ message: "claim_email_mismatch" }), "Esta cuenta no puede traer ese historial.");
     assert.equal(claimErrorMessage({ message: "email_not_confirmed" }), "Confirma el correo antes de traer el historial.");
     assert.equal(claimErrorMessage({ message: "invalid_claim_code" }), "El código no es válido.");
+    assert.equal(claimErrorMessage({ message: "claim_code_expired" }), "Ese código ya caducó.");
+    assert.equal(claimRpcMessage({ data: { ok: false, error: "claim_code_expired" } }), "Ese código ya caducó.");
     assert.equal(claimErrorMessage({ message: "claim_locked" }), "Demasiados intentos. Espera un poco o pide que lo reinicien.");
     assert.equal(claimRpcMessage({ data: { ok: false, error: "invalid_claim_code" } }), "El código no es válido.");
     assert.equal(claimRpcMessage({ data: { ok: true, choice: "kviedes" } }), null);

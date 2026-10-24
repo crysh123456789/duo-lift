@@ -119,7 +119,7 @@ export default function ClaimPage() {
                   className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 outline-none focus:border-accent"
                 />
                 <span className="mt-1 block text-xs text-muted">
-                  Solo si te lo dieron. Si esa fila lo exige y lo dejas vacío, el intento no vale.
+                  Obligatorio. Caduca a las 24 horas. Vacío cuenta como un intento.
                 </span>
               </Field>
             ) : null}

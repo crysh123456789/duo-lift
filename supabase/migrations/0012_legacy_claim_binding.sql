@@ -1,4 +1,4 @@
--- Bind each legacy claim to an email ops sets, and optionally a one-time code.
+-- Bind each legacy claim to an email ops sets and a mandatory one-time code.
 -- 0007 through 0011 are not edited.
 --
 -- private.legacy_claims.allowed_email is lowercase. Null fails closed: nobody
@@ -8,14 +8,10 @@
 -- Email confirmation is auth.users.email_confirmed_at, read inside this
 -- SECURITY DEFINER function. It is never taken from the JWT.
 --
--- Two gates, one email binding. Security picks which gate is active per row:
---   * Pre-created account: leave claim_code_hash null. The account must
---     already have email_confirmed_at set.
---   * One-time code (Confirm email is OFF, so email_confirmed_at stays null):
---     set claim_code_hash to extensions.crypt(code, extensions.gen_salt('bf')).
---     The caller passes p_code. The hash is required when it is set, even if
---     the email is also confirmed. A wrong code is counted and locks the row.
--- How ops sets the email and the hash is in the README. Do not commit either.
+-- A one-time code is mandatory. claim_code_hash null fails closed
+-- (claim_not_configured). Ops sets the hash and claim_code_expires_at
+-- (24 hours). The code is delivered privately and is not stored here.
+-- A wrong code is counted and locks the row. Success clears the hash.
 
 create schema if not exists extensions;
 
@@ -62,6 +58,7 @@ $crypt$;
 alter table private.legacy_claims
   add column allowed_email text,
   add column claim_code_hash text,
+  add column claim_code_expires_at timestamptz,
   add column claim_code_attempts integer not null default 0,
   add column claim_code_total_failures integer not null default 0,
   add column claim_code_locked_until timestamptz;
@@ -80,11 +77,21 @@ alter table private.legacy_claims
   add constraint legacy_claims_code_attempts_chk
     check (claim_code_attempts >= 0 and claim_code_total_failures >= 0);
 
+alter table private.legacy_claims
+  add constraint legacy_claims_code_expiry_chk
+    check (
+      (claim_code_hash is null and claim_code_expires_at is null)
+      or (claim_code_hash is not null and claim_code_expires_at is not null)
+    );
+
 comment on column private.legacy_claims.allowed_email is
   'Lowercase mailbox allowed to claim this key. Null fails closed. Set by ops, not by the app.';
 
 comment on column private.legacy_claims.claim_code_hash is
-  'Bcrypt hash from extensions.crypt only. Null means the pre-created confirmed account gate. Never store the code.';
+  'Bcrypt hash from extensions.crypt only. Null fails closed. Never store the code. Cleared after a successful claim.';
+
+comment on column private.legacy_claims.claim_code_expires_at is
+  'When the one-time code stops working. Required while claim_code_hash is set. Ops sets it to 24 hours after the hash.';
 
 create or replace function private.legacy_claims_normalize()
 returns trigger
@@ -184,12 +191,21 @@ begin
   from auth.users u
   where u.id = v_uid;
 
-  -- Code gate when ops stored a hash and this account has not already claimed.
-  -- A replay by the same uid does not ask for the code again.
-  if v_claim.claim_code_hash is not null and v_claim.claimed_by is distinct from v_uid then
+  -- New claim: email match is not enough. A null hash is not configured.
+  -- Replay by the same uid already cleared the hash, so it does not ask again.
+  if v_claim.claimed_by is distinct from v_uid then
+    if v_claim.claim_code_hash is null then
+      raise exception 'claim_not_configured' using errcode = '42501';
+    end if;
+    if v_confirmed is null then
+      raise exception 'email_not_confirmed' using errcode = '42501';
+    end if;
     if v_claim.claim_code_total_failures >= 20
        or (v_claim.claim_code_locked_until is not null and v_claim.claim_code_locked_until > now()) then
       return jsonb_build_object('ok', false, 'error', 'claim_locked');
+    end if;
+    if v_claim.claim_code_expires_at is null or v_claim.claim_code_expires_at <= now() then
+      return jsonb_build_object('ok', false, 'error', 'claim_code_expired');
     end if;
 
     v_code_ok := false;
@@ -229,11 +245,6 @@ begin
       end if;
       return jsonb_build_object('ok', false, 'error', 'invalid_claim_code');
     end if;
-  elsif v_claim.claimed_by is distinct from v_uid then
-    -- Pre-created account. Confirm email must already be on for this user.
-    if v_confirmed is null then
-      raise exception 'email_not_confirmed' using errcode = '42501';
-    end if;
   end if;
 
   if v_claim.claimed_by is not null and v_claim.claimed_by is distinct from v_uid then
@@ -259,6 +270,8 @@ begin
       set
         claimed_by = v_uid,
         claimed_at = now(),
+        claim_code_hash = null,
+        claim_code_expires_at = null,
         claim_code_attempts = 0,
         claim_code_locked_until = null
       where legacy_key = p_key
@@ -375,7 +388,7 @@ end;
 $$;
 
 comment on function private.claim_legacy_history(text, text) is
-  'Binds a legacy key to the JWT email and either a confirmed auth.users row or a one-time code. Fails closed when allowed_email is null.';
+  'Binds a legacy key to the JWT email, a confirmed auth.users row, and a one-time code. Fails closed when allowed_email or claim_code_hash is null.';
 
 revoke all on function private.claim_legacy_history(text, text) from public, anon;
 grant execute on function private.claim_legacy_history(text, text) to authenticated;

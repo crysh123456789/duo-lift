@@ -143,6 +143,7 @@ export function claimErrorMessage(error: { message?: string } | null | undefined
   if (message.includes("claim_email_mismatch")) return "Esta cuenta no puede traer ese historial.";
   if (message.includes("email_not_confirmed")) return "Confirma el correo antes de traer el historial.";
   if (message.includes("invalid_claim_code")) return "El código no es válido.";
+  if (message.includes("claim_code_expired")) return "Ese código ya caducó.";
   if (message.includes("claim_locked")) return "Demasiados intentos. Espera un poco o pide que lo reinicien.";
   return "No se pudo traer el historial.";
 }

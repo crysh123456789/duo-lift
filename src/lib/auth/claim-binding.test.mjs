@@ -6,6 +6,7 @@ const sql = readFileSync(
   new URL("../../../supabase/migrations/0012_legacy_claim_binding.sql", import.meta.url),
   "utf8",
 );
+const readme = readFileSync(new URL("../../../README.md", import.meta.url), "utf8");
 const previous = readFileSync(
   new URL("../../../supabase/migrations/0007_auth_per_person.sql", import.meta.url),
   "utf8",
@@ -47,16 +48,56 @@ describe("legacy claim binding", () => {
     assert.equal(/email_verified/.test(sql), false);
   });
 
-  test("optional one-time code stores only a hash and limits attempts", () => {
+  test("a missing code fails closed and there is no account-only branch", () => {
     assert.match(sql, /add column claim_code_hash text/);
-    assert.match(claim, /extensions\.crypt\(p_code, v_claim\.claim_code_hash\) = v_claim\.claim_code_hash/);
+    assert.match(claim, /if v_claim\.claim_code_hash is null then/);
+    assert.match(claim, /raise exception 'claim_not_configured'/);
     assert.match(claim, /octet_length\(p_code\) between 1 and 72/);
     assert.match(claim, /'invalid_claim_code'/);
+    assert.equal(/elsif[\s\S]{0,240}email_not_confirmed/.test(claim), false);
+    assert.equal(/Pre-created account/.test(sql), false);
+    assert.equal(/leave claim_code_hash null/.test(sql), false);
+    assert.equal(/Deja `claim_code_hash` en null/.test(readme), false);
+    assert.match(readme, /Se entrega en privado/);
+    assert.match(readme, /claim_code_expires_at = now\(\) \+ interval '24 hours'/);
+    assert.equal(/claim_code_hash is not null and v_claim\.claimed_by/.test(claim), false);
+    const hashNull = claim.indexOf("if v_claim.claim_code_hash is null then");
+    const configured = claim.indexOf("raise exception 'claim_not_configured'", hashNull);
+    const rewrite = claim.indexOf("insert into public.users");
+    assert.equal(hashNull >= 0 && configured > hashNull && rewrite > configured, true);
+  });
+
+  test("an expired code returns claim_code_expired after lockout and before the compare", () => {
+    assert.match(sql, /add column claim_code_expires_at timestamptz/);
+    assert.match(
+      sql,
+      /claim_code_hash is not null and claim_code_expires_at is not null/,
+    );
+    assert.match(claim, /claim_code_expires_at <= now\(\)/);
+    assert.match(claim, /return jsonb_build_object\('ok', false, 'error', 'claim_code_expired'\)/);
+    assert.equal(/raise exception 'claim_code_expired'/.test(claim), false);
+    const locked = claim.indexOf("return jsonb_build_object('ok', false, 'error', 'claim_locked')");
+    const expired = claim.indexOf("return jsonb_build_object('ok', false, 'error', 'claim_code_expired')");
+    const compare = claim.indexOf("extensions.crypt(p_code, v_claim.claim_code_hash)");
+    assert.equal(locked >= 0 && expired > locked && compare > expired, true);
+  });
+
+  test("a used code cannot be reused because success clears the hash", () => {
+    const update = claim.slice(claim.indexOf("set\n        claimed_by = v_uid"));
+    const hashClear = update.indexOf("claim_code_hash = null");
+    const expiresClear = update.indexOf("claim_code_expires_at = null");
+    const where = update.indexOf("where legacy_key = p_key");
+    assert.equal(hashClear >= 0 && expiresClear > hashClear && where > expiresClear, true);
+    assert.match(claim, /claimed_by = v_uid/);
+    assert.equal(/claim_code_hash\s*=\s*'/.test(claim), false);
+  });
+
+  test("a wrong code still locks after repeated attempts", () => {
+    assert.match(claim, /extensions\.crypt\(p_code, v_claim\.claim_code_hash\) = v_claim\.claim_code_hash/);
     assert.match(claim, /'claim_locked'/);
     assert.match(claim, /claim_code_total_failures >= 20/);
     assert.match(claim, />= 5 then now\(\) \+ interval '15 minutes'/);
     assert.match(claim, /p_code text default null/);
-    assert.equal(/claim_code_hash[\s\S]{0,80}pega-|claim_code_hash\s*=\s*'/.test(claim), false);
   });
 
   test("history trigger fires only when the row changes, and delete stays separate", () => {

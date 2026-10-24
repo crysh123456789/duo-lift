@@ -22,33 +22,23 @@ Supabase Auth (correo y contraseña) es la identidad. Cada cuenta ve solo sus en
 
 En el primer inicio, si queda historial legado sin reclamar, la persona elige Historial de Cristian, Historial de Kviedes o Empezar limpio. Esa elección la escribe el RPC `claim_legacy_history` / `decline_legacy_history`: marca `private.legacy_claims.claimed_by` solo cuando está vacío. Una segunda cuenta recibe `already_claimed`. La interfaz no puede reclamar dos veces.
 
-`allowed_email` sale vacío en la migración `0012_legacy_claim_binding.sql`. Vacío cierra el reclamo (`claim_not_configured`). El correo no va en el código. En el SQL editor, como postgres, cuando ya sepas el correo de esa persona:
+`allowed_email` y `claim_code_hash` salen vacíos en `0012_legacy_claim_binding.sql`. Cualquiera de los dos en null cierra el reclamo (`claim_not_configured`). No hay vía sin código. El correo se compara en minúsculas: `lower(auth.jwt()->>'email') = lower(allowed_email)`. La confirmación no sale del JWT: `private.claim_legacy_history` es `security definer` con `search_path = ''` y lee `auth.users.email_confirmed_at`. Sin esa marca la respuesta es `email_not_confirmed`.
 
-```sql
-update private.legacy_claims
-set allowed_email = lower('persona@ejemplo.com')
-where legacy_key = 'kviedes';
-```
-
-Un trigger lo guarda en minúsculas. La función exige `lower(auth.jwt()->>'email') = lower(allowed_email)`. La confirmación no sale del JWT: `private.claim_legacy_history` es `security definer` con `search_path = ''` y lee `auth.users.email_confirmed_at`.
-
-Las dos vías exigen ese correo. Seguridad elige una por fila:
-
-1. Cuenta ya confirmada. Deja `claim_code_hash` en null. Sin `email_confirmed_at` la respuesta es `email_not_confirmed`. Hoy Confirm email está apagado, así que esta vía no abre sola.
-2. Código de un solo uso. Guarda solo el hash (máximo 72 bytes, límite de bcrypt). No guardes el código en el repo:
+El código es obligatorio y de un solo uso. Se entrega en privado. No se escribe en el repo, en el chat, ni en un ticket. En el SQL editor, como postgres, sustituye el código solo en esa sesión y guarda el hash. Caduca a las 24 horas (`claim_code_expires_at`). Si falta la caducidad, el CHECK no deja guardar el hash.
 
 ```sql
 update private.legacy_claims
 set
   allowed_email = lower('persona@ejemplo.com'),
-  claim_code_hash = extensions.crypt('pega-aqui-un-codigo-largo', extensions.gen_salt('bf')),
+  claim_code_hash = extensions.crypt(:one_time_code, extensions.gen_salt('bf')),
+  claim_code_expires_at = now() + interval '24 hours',
   claim_code_attempts = 0,
   claim_code_total_failures = 0,
   claim_code_locked_until = null
 where legacy_key = 'kviedes';
 ```
 
-La persona lo escribe en Traer historial (`p_code`). Un fallo suma intento: 5 bloquean 15 minutos (`claim_locked` o `invalid_claim_code`); 20 bloquean hasta que operaciones ponga los contadores en 0 y `claim_code_locked_until` en null. Repite el `update` para `cristian` con el otro correo. El mismo patrón vale si más adelante se confirman las cuentas y se borra el hash.
+`:one_time_code` no es un secreto de este archivo: es el valor que operaciones pega en el editor y no vuelve a copiar. Máximo 72 bytes (bcrypt). La persona lo escribe en Traer historial (`p_code`). Un fallo suma intento: 5 bloquean 15 minutos; 20 bloquean hasta que operaciones ponga los contadores en 0 y `claim_code_locked_until` en null. Caducado responde `claim_code_expired` y no mueve filas. Un reclamo correcto borra `claim_code_hash` y `claim_code_expires_at`, así que el mismo código no sirve otra vez. Repite el `update` para `cristian` con otro correo y otro código.
 
 En Authentication → Providers → Email, desactiva **Confirm email** para que Crear cuenta abra la sesión. Si queda activo, la app pide revisar el correo. Ese interruptor es un paso de operaciones aparte del enlace de recuperación.
 
