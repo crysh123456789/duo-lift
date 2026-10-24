@@ -3,8 +3,10 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { retryGymSync } from "@/lib/sync/engine";
 import {
+  FOOD_DAY_REJECTED_LABEL,
   SYNC_ERROR_LABEL,
   SYNC_ERROR_LABEL_SHORT,
+  getFoodDayRejection,
   getSyncPhase,
   subscribeSyncPhase,
   syncPhaseLabel,
@@ -67,8 +69,17 @@ function useCompactError(active: boolean) {
  */
 export function SyncStatus() {
   const phase = useSyncExternalStore(subscribeSyncPhase, getSyncPhase, () => "local" as const);
+  const foodDayRejection = useSyncExternalStore(subscribeSyncPhase, getFoodDayRejection, () => false);
   const { ref, compact } = useCompactError(phase === "error");
   const label = phase === "error" && compact ? SYNC_ERROR_LABEL_SHORT : syncPhaseLabel(phase);
+
+  if (phase === "saved" && foodDayRejection) {
+    return (
+      <span data-sync-phase={phase} data-food-day-rejection="true" aria-live="polite" className={PILL}>
+        {FOOD_DAY_REJECTED_LABEL}
+      </span>
+    );
+  }
 
   if (phase === "saved") return null;
 

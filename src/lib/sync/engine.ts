@@ -9,7 +9,8 @@ import { prepareSyncSnapshot, serverKeptWorkouts, tombstonesForRound } from "./r
 import { getSyncUserId, subscribeSyncUser } from "./session-user";
 import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import { snapshotFromState } from "./snapshot";
-import { setSyncPhase } from "./status";
+import { rejectedFoodDays } from "./rejected";
+import { setFoodDayRejection, setSyncPhase } from "./status";
 import {
   addTombstones,
   readAck,
@@ -30,6 +31,7 @@ type SyncResponse = {
   data?: unknown;
   tombstones?: unknown;
   error?: string;
+  rejected?: unknown;
 };
 
 let applying = false;
@@ -205,6 +207,13 @@ export function startGymSync() {
       if (needsPush) {
         const pushed = await push(prepared.snapshot, prepared.tombstones, signal);
         if (stopped || epoch !== syncEpoch) return;
+        const rejected = rejectedFoodDays(pushed);
+        setFoodDayRejection(rejected.length > 0);
+        if (rejected.length > 0) {
+          logSync(
+            `food days rejected: ${rejected.map((row) => `${row.id} (${row.reason})`).join(", ")}`,
+          );
+        }
         const returned = pushed.data ? parseSnapshot(pushed.data) : null;
         if (!serverKeptWorkouts(prepared.snapshot, returned, prepared.tombstones)) {
           logSync("server ack did not include the phone workouts");
@@ -212,6 +221,8 @@ export function startGymSync() {
           return;
         }
         removeTombstones(prepared.tombstones);
+      } else {
+        setFoodDayRejection(false);
       }
       const latest = ownSnapshot(userId);
       const latestStones = tombstonesForRound(migrated, latest, readTombstones(), remoteTombstones, ack);

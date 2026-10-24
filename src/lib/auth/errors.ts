@@ -139,5 +139,23 @@ export function claimErrorMessage(error: { message?: string } | null | undefined
   if (message.includes("already_decided")) return "Ya elegiste. No se puede cambiar.";
   if (message.includes("not_authenticated")) return "La sesión caducó. Entra de nuevo.";
   if (message.includes("invalid_history")) return "Ese historial no existe.";
+  if (message.includes("claim_not_configured")) return "Ese historial todavía no está habilitado.";
+  if (message.includes("claim_email_mismatch")) return "Esta cuenta no puede traer ese historial.";
+  if (message.includes("email_not_confirmed")) return "Confirma el correo antes de traer el historial.";
+  if (message.includes("invalid_claim_code")) return "El código no es válido.";
+  if (message.includes("claim_locked")) return "Demasiados intentos. Espera un poco o pide que lo reinicien.";
   return "No se pudo traer el historial.";
+}
+
+/** Transport errors and `{ ok: false, error }` from the claim RPC. Null means the call succeeded. */
+export function claimRpcMessage(result: {
+  error?: { message?: string } | null;
+  data?: unknown;
+}): string | null {
+  if (result.error) return claimErrorMessage(result.error);
+  const data = result.data;
+  if (!data || typeof data !== "object") return null;
+  if ((data as { ok?: unknown }).ok !== false) return null;
+  const code = (data as { error?: unknown }).error;
+  return claimErrorMessage({ message: typeof code === "string" ? code : "" });
 }

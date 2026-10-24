@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GymData } from "@/lib/types";
 import { toSyncPayload } from "./payload";
+import { rejectedFoodDays, type RejectedFoodDay } from "./rejected";
 import { gymFromRows, type RemoteTables } from "./rows";
 import { isTombstoneEntity, type Tombstone } from "./types";
 
@@ -136,8 +137,13 @@ export async function readOwn(
   return { ...mapped, tombstones };
 }
 
-export async function writeOwn(client: SupabaseClient, data: GymData, tombstones: Tombstone[]) {
+export async function writeOwn(
+  client: SupabaseClient,
+  data: GymData,
+  tombstones: Tombstone[],
+): Promise<{ rejected: { food_days: RejectedFoodDay[] } }> {
   const payload = toSyncPayload(data, tombstones);
-  const { error } = await client.rpc("sync_apply", { payload });
+  const { data: applied, error } = await client.rpc("sync_apply", { payload });
   if (error) throw new Error(error.message);
+  return { rejected: { food_days: rejectedFoodDays(applied) } };
 }

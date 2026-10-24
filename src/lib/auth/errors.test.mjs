@@ -8,6 +8,7 @@ import {
   RECOVERY_LINK_INVALID,
   authErrorMessage,
   claimErrorMessage,
+  claimRpcMessage,
   forgotOutcome,
   passwordUpdateMessage,
   validateNewPassword,
@@ -33,6 +34,14 @@ describe("auth copy", () => {
     assert.equal(claimErrorMessage({ message: "already_claimed" }), "Ese historial ya lo trajo otra cuenta.");
     assert.equal(claimErrorMessage({ message: "already_decided" }), "Ya elegiste. No se puede cambiar.");
     assert.equal(claimErrorMessage({ message: "not_authenticated" }), "La sesión caducó. Entra de nuevo.");
+    assert.equal(claimErrorMessage({ message: "claim_not_configured" }), "Ese historial todavía no está habilitado.");
+    assert.equal(claimErrorMessage({ message: "claim_email_mismatch" }), "Esta cuenta no puede traer ese historial.");
+    assert.equal(claimErrorMessage({ message: "email_not_confirmed" }), "Confirma el correo antes de traer el historial.");
+    assert.equal(claimErrorMessage({ message: "invalid_claim_code" }), "El código no es válido.");
+    assert.equal(claimErrorMessage({ message: "claim_locked" }), "Demasiados intentos. Espera un poco o pide que lo reinicien.");
+    assert.equal(claimRpcMessage({ data: { ok: false, error: "invalid_claim_code" } }), "El código no es válido.");
+    assert.equal(claimRpcMessage({ data: { ok: true, choice: "kviedes" } }), null);
+    assert.equal(claimRpcMessage({ error: { message: "claim_email_mismatch" } }), "Esta cuenta no puede traer ese historial.");
   });
 
   test("forgot success is identical when the account is missing", () => {

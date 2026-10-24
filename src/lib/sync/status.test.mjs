@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { SYNC_ERROR_LABEL, SYNC_ERROR_LABEL_SHORT, syncPhaseLabel } from "./status.ts";
+import {
+  FOOD_DAY_REJECTED_LABEL,
+  SYNC_ERROR_LABEL,
+  SYNC_ERROR_LABEL_SHORT,
+  syncPhaseLabel,
+} from "./status.ts";
 
 describe("sync pill labels", () => {
   test("uses the approved copy", () => {
@@ -14,7 +19,11 @@ describe("sync pill labels", () => {
   });
 
   test("does not say the history was cleared", () => {
-    const copy = ["local", "offline", "syncing", "saved", "error"].map((phase) => syncPhaseLabel(phase)).join(" ");
+    const copy = ["local", "offline", "syncing", "saved", "error"]
+      .map((phase) => syncPhaseLabel(phase))
+      .concat(FOOD_DAY_REJECTED_LABEL)
+      .join(" ");
     assert.equal(/borrad|perdi|limpi|vac[ií]/.test(copy), false);
+    assert.match(FOOD_DAY_REJECTED_LABEL, /siguen en el teléfono/);
   });
 });

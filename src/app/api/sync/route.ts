@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { syncGate } from "@/lib/sync/gate";
 import { parseSnapshot, parseTombstones } from "@/lib/sync/payload";
 import { readOwn, writeOwn } from "@/lib/sync/remote";
+import { clearFoodDayLimitError } from "@/lib/sync/rejected";
 import { missingWorkoutIds } from "@/lib/sync/round";
 
 export const runtime = "nodejs";
@@ -90,16 +91,15 @@ export async function PUT(request: Request) {
   if (!snapshot) return json({ ok: false, error: "Snapshot inválido." }, 400);
   const tombstones = parseTombstones(body?.tombstones);
   const foreignWorkout = snapshot.workouts.some((row) => row.userId !== session.userId);
-  const foreignFood = snapshot.foodDays.some((row) => row.userId !== session.userId);
   const foreignLoad = Object.keys(snapshot.workingLoads).some(
     (key) => !key.startsWith(`${session.userId}:`),
   );
-  if (foreignWorkout || foreignFood || foreignLoad) {
+  if (foreignWorkout || foreignLoad) {
     return json({ ok: false, error: "El snapshot incluye a otra persona." }, 400);
   }
 
   try {
-    await writeOwn(session.supabase, snapshot, tombstones);
+    const written = await writeOwn(session.supabase, snapshot, tombstones);
     const remote = await readOwn(session.supabase, session.userId);
     const missing = missingWorkoutIds(snapshot, remote.data, tombstones);
     if (missing.length > 0) {
@@ -114,9 +114,13 @@ export async function PUT(request: Request) {
       remindersFromServer: remote.remindersFromServer,
       data: remote.data,
       tombstones: remote.tombstones,
+      rejected: written.rejected,
     });
   } catch (error) {
     logSyncFailure("write", error);
+    const message = error instanceof Error ? error.message : "";
+    const clear = clearFoodDayLimitError(message);
+    if (clear) return json({ ok: false, enabled: true, error: clear }, 400);
     return json({ ok: false, enabled: true, error: "No se pudo guardar en Supabase." }, 502);
   }
 }
