@@ -24,8 +24,11 @@ import {
   mealTimeLabel,
   mealTotals,
   nextMealPrompt,
+  manualKcalGoal,
   manualProteinGoal,
   normalizeMealLog,
+  proteinGoalNeedsConfirm,
+  weightProteinSuggestion,
   shiftStamp,
   todayStamp,
 } from "@/lib/nutrition";
@@ -134,6 +137,8 @@ function DayScreen({
   const quickSlot = prompt?.id ?? "cena";
   const quickLabel = MEAL_SLOTS.find((slot) => slot.id === quickSlot)?.label ?? "Cena";
   const proteinLabel = date === todayStamp() ? PROTEIN_TODAY_LABEL : "Proteína";
+  const [goalsOpen, setGoalsOpen] = useState(false);
+  const totalsLabel = formatTotals(totals, goal);
 
   return (
     <div className="space-y-4">
@@ -156,12 +161,19 @@ function DayScreen({
         label="Fecha"
         hint="Así el diario queda en el día correcto."
       />
-      <div className="sticky top-[5.75rem] z-20 -mx-4 border-y border-line bg-background/95 px-4 py-3 backdrop-blur-md sm:top-14">
-        <p className="text-[11px] uppercase tracking-wider text-muted">{proteinLabel}</p>
-        <p className="mt-1 font-mono text-sm tabular-nums" aria-label={`${proteinLabel} ${formatTotals(totals, goal)}`}>
-          {formatTotals(totals, goal)}
-        </p>
+      <div className="sticky top-[5.75rem] z-20 -mx-4 border-y border-line bg-background/95 px-4 py-2 backdrop-blur-md sm:top-14">
+        <button
+          type="button"
+          onClick={() => setGoalsOpen(true)}
+          aria-haspopup="dialog"
+          aria-label={`${proteinLabel} ${totalsLabel}. Editar meta manual`}
+          className="flex min-h-11 w-full flex-col items-start justify-center rounded-xl text-left"
+        >
+          <span className="text-[11px] uppercase tracking-wider text-muted">{proteinLabel}</span>
+          <span className="mt-1 font-mono text-sm tabular-nums">{totalsLabel}</span>
+        </button>
       </div>
+      {goalsOpen ? <ManualGoalSheet onClose={() => setGoalsOpen(false)} /> : null}
       <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
         {MEAL_SLOTS.map((slot) => {
           const entry = meals[slot.id];
@@ -289,6 +301,7 @@ function MealEditor({
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [legacyNote] = useState(() => meals[slot].note.trim().length > 0);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [goalsOpen, setGoalsOpen] = useState(false);
   const goal = manualProteinGoal(me);
   const proteinLabel = date === todayStamp() ? PROTEIN_TODAY_LABEL : "Proteína";
   const draftMeals: MealLog = { ...meals, [slot]: entry };
@@ -360,9 +373,18 @@ function MealEditor({
       )}
       <div className="space-y-1 rounded-xl border border-line bg-surface-2 px-3 py-3">
         <p className="font-mono text-sm tabular-nums">{formatTotals(mealTotals(entry))}</p>
-        <p className="text-[11px] uppercase tracking-wider text-muted">{proteinLabel}</p>
-        <p className="font-mono text-sm tabular-nums">{formatTotals(dayTotals(draftMeals), goal)}</p>
+        <button
+          type="button"
+          onClick={() => setGoalsOpen(true)}
+          aria-haspopup="dialog"
+          aria-label={`${proteinLabel} ${formatTotals(dayTotals(draftMeals), goal)}. Editar meta manual`}
+          className="flex min-h-11 w-full flex-col items-start justify-center rounded-xl text-left"
+        >
+          <span className="text-[11px] uppercase tracking-wider text-muted">{proteinLabel}</span>
+          <span className="font-mono text-sm tabular-nums">{formatTotals(dayTotals(draftMeals), goal)}</span>
+        </button>
       </div>
+      {goalsOpen ? <ManualGoalSheet onClose={() => setGoalsOpen(false)} /> : null}
       <Button
         variant="primary"
         className="h-12 min-h-12 w-full"
@@ -373,6 +395,94 @@ function MealEditor({
       >
         Guardar
       </Button>
+    </div>
+  );
+}
+
+function ManualGoalSheet({ onClose }: { onClose: () => void }) {
+  const titleId = useId();
+  const me = useGymStore((s) => s.users.find((user) => user.id === s.activeUserId));
+  const updateUser = useGymStore((s) => s.updateUser);
+  const protein = manualProteinGoal(me);
+  const kcal = manualKcalGoal(me);
+  const suggestion = weightProteinSuggestion(me?.weightKg);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function applySuggestion() {
+    if (!me || suggestion == null) return;
+    if (proteinGoalNeedsConfirm(protein, suggestion)) {
+      setConfirming(true);
+      return;
+    }
+    updateUser(me.id, { proteinTargetG: suggestion });
+  }
+
+  function confirmReplace() {
+    if (!me || suggestion == null) return;
+    updateUser(me.id, { proteinTargetG: suggestion });
+    setConfirming(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center">
+      <button
+        type="button"
+        aria-label="Cerrar meta manual"
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative z-10 w-full max-w-lg rounded-t-3xl border border-line bg-background px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl"
+      >
+        <p id={titleId} className="text-xs text-muted">
+          Meta manual
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <NumberField
+            label="Proteína (g)"
+            value={protein}
+            onChange={(proteinTargetG) => me && updateUser(me.id, { proteinTargetG })}
+          />
+          <NumberField
+            label="Calorías (kcal)"
+            value={kcal}
+            onChange={(kcalTarget) => me && updateUser(me.id, { kcalTarget })}
+          />
+        </div>
+        {suggestion != null ? (
+          confirming ? (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm">¿Reemplazar la meta manual de proteína por {suggestion} g?</p>
+              <div className="flex gap-2">
+                <Button variant="primary" className="h-11 min-h-11 flex-1" onClick={confirmReplace}>
+                  Reemplazar
+                </Button>
+                <Button className="h-11 min-h-11 flex-1" onClick={() => setConfirming(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button className="mt-3 h-11 min-h-11 w-full" onClick={applySuggestion}>
+              Calcular según mi peso
+            </Button>
+          )
+        ) : null}
+        <Button className="mt-3 h-11 min-h-11 w-full" onClick={onClose}>
+          Listo
+        </Button>
+      </div>
     </div>
   );
 }

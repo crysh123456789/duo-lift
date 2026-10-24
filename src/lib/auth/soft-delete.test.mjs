@@ -109,4 +109,47 @@ describe("soft-delete migration", () => {
     assert.equal((food.match(/create or replace function public\.sync_apply/g) ?? []).length, 1);
     assert.equal(/protein_target_g/.test(previous), false);
   });
+
+  test("0011 forces history RLS and does not delete a food day when the id differs", () => {
+    const next = readFileSync(
+      new URL("../../../supabase/migrations/0011_food_day_history_rls.sql", import.meta.url),
+      "utf8",
+    );
+    const food = readFileSync(
+      new URL("../../../supabase/migrations/0010_food_day_merge.sql", import.meta.url),
+      "utf8",
+    );
+    assert.match(next, /alter table public\.food_days_history enable row level security/);
+    assert.match(next, /alter table public\.food_days_history force row level security/);
+    assert.match(
+      next,
+      /create policy food_days_history_select_own on public\.food_days_history\s+for select to authenticated\s+using \(user_id = \(select auth\.uid\(\)\)::text\)/,
+    );
+    assert.match(
+      next,
+      /revoke insert, update, delete on table public\.food_days_history from public, anon, authenticated/,
+    );
+    assert.equal(/grant insert|grant update|grant delete/i.test(next), false);
+    const capture = next.slice(next.indexOf("function public.food_days_history_capture"));
+    assert.match(capture, /security definer/);
+    assert.match(capture, /set search_path = ''/);
+    assert.match(capture, /insert into public\.food_days_history/);
+    assert.match(next, /revoke all on function public\.food_days_history_capture\(\) from public, anon, authenticated/);
+    const sync = next.slice(next.indexOf("function public.sync_apply"));
+    const foodBlock = sync.slice(
+      sync.indexOf("A different id for the same user and date"),
+      sync.indexOf("insert into public.working_loads"),
+    );
+    assert.equal(/set deleted_at\s*=\s*now\(\)/.test(foodBlock), false);
+    assert.equal(/is distinct from/.test(foodBlock), false);
+    assert.match(foodBlock, /deleted_at = null/);
+    assert.equal(/delete from public\.food_days/i.test(next), false);
+    assert.match(foodBlock, /public\.merge_food_meals/);
+    assert.match(sync, /elsif rec\.entity = 'foodDays'/);
+    assert.match(sync, /if rec\.entity_id like 'w-cr-%' or rec\.entity_id like 'w-am-%' then/);
+    assert.equal((next.match(/create or replace function public\.sync_apply/g) ?? []).length, 1);
+    assert.match(previous, /delete from public\.food_days existing/);
+    assert.match(food, /set deleted_at = now\(\)/);
+    assert.equal(/force row level security/i.test(food), false);
+  });
 });

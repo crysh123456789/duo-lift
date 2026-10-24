@@ -82,6 +82,18 @@ export function manualKcalGoal(user: { kcalTarget?: number | null } | null | und
   return clampDailyTarget(user?.kcalTarget, KCAL_TARGET_MAX);
 }
 
+/** Protein grams from body weight. There is no kcal formula here. */
+export function weightProteinSuggestion(weightKg: number | null | undefined): number | null {
+  if (typeof weightKg !== "number" || !Number.isFinite(weightKg) || weightKg <= 0) return null;
+  return clampDailyTarget(proteinTargetG(weightKg), PROTEIN_TARGET_MAX);
+}
+
+/** A manual protein goal is replaced only after the person confirms. */
+export function proteinGoalNeedsConfirm(current: number | null, suggestion: number | null): boolean {
+  if (suggestion == null || current == null) return false;
+  return current !== suggestion;
+}
+
 function finiteNonNegative(value: unknown): number | null {
   if (value == null || value === "") return null;
   const parsed = typeof value === "number" ? value : Number(value);

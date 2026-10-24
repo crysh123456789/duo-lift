@@ -8,6 +8,8 @@ import {
   formatTotals,
   macroKcal,
   manualProteinGoal,
+  proteinGoalNeedsConfirm,
+  weightProteinSuggestion,
   mealSummary,
   mealTotals,
   normalizeMealEntry,
@@ -131,6 +133,16 @@ describe("manual nutrition goals", () => {
     const noteOnly = { ...emptyMeals(), desayuno: { time: "08:00", items: [], note: "avena" } };
     assert.equal(/108/.test(nutritionComment(cristian, noteOnly)), false);
     assert.match(nutritionComment({ ...cristian, proteinTargetG: 90, kcalTarget: 2200 }, noteOnly), /90 g de proteína y 2200 kcal/);
+  });
+
+  test("weight suggestion fills empty protein and asks before replacing a manual goal", () => {
+    assert.equal(weightProteinSuggestion(60), 108);
+    assert.equal(weightProteinSuggestion(null), null);
+    assert.equal(weightProteinSuggestion(0), null);
+    assert.equal(proteinGoalNeedsConfirm(null, 108), false);
+    assert.equal(proteinGoalNeedsConfirm(108, 108), false);
+    assert.equal(proteinGoalNeedsConfirm(90, 108), true);
+    assert.equal(proteinGoalNeedsConfirm(90, null), false);
   });
 
   test("manual targets round-trip through the sync payload", () => {

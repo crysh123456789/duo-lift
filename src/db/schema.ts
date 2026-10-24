@@ -17,7 +17,7 @@ import {
 /**
  * Postgres schema aligned with supabase/migrations/0001_init.sql,
  * 0002_duo_local_sync.sql, 0008_soft_delete.sql, 0009_nutrition_targets.sql,
- * and 0010_food_day_merge.sql.
+ * 0010_food_day_merge.sql, and 0011_food_day_history_rls.sql.
  * Identifiers are text because the Zustand store uses slugs (`user-cristian`,
  * `ex-banca`) and uuid strings from `nid()`, not auth.users ids.
  */
