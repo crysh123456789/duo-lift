@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { IDS, nid } from "./ids";
 import { bumpKg, getWorkingLoad, loadKey } from "./loads";
-import { createSeed, mergeGymData, stripLegacySeed } from "./seed";
+import { createSeed, mergeGymData, seedWorkoutWasEdited, stripLegacySeed } from "./seed";
 import { duoUnlocked } from "./session-flag";
 import { inferSplitDay, splitDayByTitle, SPLIT, type SplitDay } from "./split";
 import type {
@@ -574,6 +574,16 @@ export const useGymStore = create<GymStore>()(
         const persisted = (persistedState ?? {}) as Partial<GymStore>;
         const cleaned = fromVersion < 6 ? stripLegacySeed(persisted) : persisted;
         const merged = mergeGymData(cleaned, createSeed(), { preferSeedLoads: fromVersion < 6 });
+        if (fromVersion < 6) {
+          // mergeGymData puts the template rows back. Drop pristine ones again
+          // and leave working loads from the merge untouched.
+          const dropped = stripLegacySeed(merged);
+          merged.workouts = dropped.workouts ?? [];
+          merged.blocks = dropped.blocks ?? [];
+          merged.stations = dropped.stations ?? [];
+          merged.sets = dropped.sets ?? [];
+          merged.reactions = dropped.reactions ?? [];
+        }
         if (fromVersion < 7) {
           const seed = createSeed();
           merged.users = merged.users.map((user) => {
@@ -583,7 +593,8 @@ export const useGymStore = create<GymStore>()(
           });
           merged.workouts = merged.workouts.map((w) => {
             const fromSeed = seed.workouts.find((s) => s.id === w.id);
-            return fromSeed ? { ...w, notes: fromSeed.notes } : w;
+            if (!fromSeed || seedWorkoutWasEdited(merged, w.id, seed)) return w;
+            return { ...w, notes: fromSeed.notes };
           });
           merged.duo = { ...merged.duo, name: seed.duo.name };
         }

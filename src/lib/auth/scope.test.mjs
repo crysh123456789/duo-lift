@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createSeed } from "../seed.ts";
-import { adoptAccount, rewriteLegacyOwner, scopeToUser, stitchGym } from "./scope.ts";
+import { adoptAccount, attachClaimedHistory, rewriteLegacyOwner, scopeToUser, stitchGym } from "./scope.ts";
 
 const AUTH_A = "11111111-1111-4111-8111-111111111111";
 
@@ -40,6 +40,26 @@ describe("per-person gym scope", () => {
     assert.equal(stitched.workouts.some((row) => row.userId === "user-amigo"), true);
     assert.equal(stitched.workouts.some((row) => row.userId === AUTH_A), true);
     assert.equal(stitched.duo.id, full.duo.id);
+  });
+
+  test("claiming Cristian retags only his rows and leaves Kviedes on user-amigo", () => {
+    const next = attachClaimedHistory(
+      createSeed(),
+      {
+        id: AUTH_A,
+        email: "crysh@example.com",
+        displayName: "Crysh",
+        heightCm: 167,
+        weightKg: 60,
+      },
+      "cristian",
+    );
+    assert.equal(next.workouts.some((row) => row.userId === "user-cristian"), false);
+    assert.equal(next.workouts.some((row) => row.userId === AUTH_A), true);
+    assert.equal(next.workouts.some((row) => row.id.startsWith("w-am-") && row.userId === "user-amigo"), true);
+    const own = scopeToUser(next, AUTH_A);
+    assert.equal(own.workouts.some((row) => row.id.startsWith("w-am-")), false);
+    assert.equal(own.workouts.some((row) => row.id.startsWith("w-cr-")), true);
   });
 
   test("adoptAccount adds the profile and keeps everyone else", () => {

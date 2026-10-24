@@ -35,6 +35,9 @@ export function LoadBoard() {
       <p className="text-sm text-muted">
         Tu carga de trabajo, de las series que marques. El ±2.5 kg mueve tu peso.
       </p>
+      {grouped.length === 0 ? (
+        <p className="text-sm text-muted">Todavía no hay cargas. Márcalas en un entreno.</p>
+      ) : null}
       {grouped.map((section) => (
         <section key={section.group} className="overflow-hidden rounded-2xl border border-line">
           <h2 className="border-b border-line bg-surface px-4 py-2 text-xs uppercase tracking-wider text-muted">

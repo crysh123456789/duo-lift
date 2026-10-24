@@ -1,3 +1,4 @@
+import { isLegacyKey, legacyUserId } from "@/lib/auth/constants";
 import { loadKey } from "@/lib/loads";
 import { canonicalize } from "@/lib/sync/snapshot";
 import type { GymData, User } from "@/lib/types";
@@ -139,6 +140,21 @@ export function rewriteLegacyOwner<T extends GymData>(data: T, fromId: string, t
     ),
     workingLoads,
   };
+}
+
+/**
+ * Adopts the auth profile and, when this account already claimed a legacy
+ * history, retags that person's rows. The other legacy person stays put.
+ * `clean` and a missing decision do not move anyone.
+ */
+export function attachClaimedHistory<T extends GymData>(
+  data: T,
+  profile: AccountProfile,
+  decision: string | null,
+): T {
+  const adopted = adoptAccount(data, profile);
+  if (!decision || !isLegacyKey(decision)) return adopted;
+  return rewriteLegacyOwner(adopted, legacyUserId(decision), profile.id);
 }
 
 /** Ensures the signed-in profile exists locally. Does not delete anyone else's rows. */

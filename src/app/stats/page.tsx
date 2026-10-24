@@ -119,7 +119,7 @@ export default function StatsPage() {
       <section>
         <h2 className="mb-1 text-sm font-medium">Volumen por día (kg)</h2>
         <p className="mb-3 text-xs text-muted">
-          Cada día usa la fecha de la sesión, también si sigue sin cerrar.
+          Todas las fechas con sesión, también si sigue sin cerrar.
         </p>
         <div className="h-64 rounded-2xl border border-line bg-surface p-3">
           <ResponsiveContainer width="100%" height="100%">

@@ -70,6 +70,8 @@ export function SyncStatus() {
   const { ref, compact } = useCompactError(phase === "error");
   const label = phase === "error" && compact ? SYNC_ERROR_LABEL_SHORT : syncPhaseLabel(phase);
 
+  if (phase === "saved") return null;
+
   if (phase === "error") {
     return (
       <button

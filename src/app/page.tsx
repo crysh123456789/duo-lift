@@ -7,21 +7,13 @@ import { Panel } from "@/components/ui";
 import { PageTitle } from "@/components/page-title";
 import { whenLabel, relativeTime } from "@/lib/format";
 import { foodDayFor, nextMealPrompt, todayStamp } from "@/lib/nutrition";
-import {
-  formatKg,
-  lastWorkout,
-  sessionSummary,
-  volumeLastDays,
-  workoutsLastDays,
-} from "@/lib/metrics";
+import { formatKg, lastWorkout, personTrainingStats, sessionSummary } from "@/lib/metrics";
 import { personName } from "@/lib/people";
 import { groupDuoSessions } from "@/lib/session-groups";
 import { DATE_UPDATED, homeTrainCta, staleOpenWorkouts } from "@/lib/session-date";
 import { splitHeadline } from "@/lib/split";
 import { useOwnGym } from "@/lib/auth/use-own-gym";
 import { workoutVolume } from "@/lib/workout-tree";
-
-const PALETTE = ["var(--me)", "var(--them)"];
 
 export default function DashboardPage() {
   const data = useOwnGym();
@@ -34,11 +26,14 @@ export default function DashboardPage() {
 
   const cards = data.users.map((user) => {
     const last = lastWorkout(data, user.id);
+    const stats = personTrainingStats(data, user.id);
     return {
       user,
       name: personName(user),
-      sessions: workoutsLastDays(data, user.id, 7).length,
-      volume: volumeLastDays(data, user.id, 7),
+      sessions: stats.completed,
+      volume: stats.volume,
+      weekCompleted: stats.weekCompleted,
+      weekVolume: stats.weekVolume,
       last,
       summary: last ? sessionSummary(data, last.id) : "Sin entrenos aún",
     };
@@ -82,16 +77,10 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        {cards.map((card, i) => (
+        {cards.map((card) => (
           <Panel key={card.user.id} className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-lg font-medium">{card.name || "Ponle nombre en Perfil"}</h2>
-              <span
-                className="text-[11px] uppercase tracking-wider"
-                style={{ color: PALETTE[i] ?? PALETTE[0] }}
-              >
-                7 días
-              </span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -103,6 +92,9 @@ export default function DashboardPage() {
                 <p className="text-xs text-muted">kg de volumen</p>
               </div>
             </div>
+            <p className="mt-3 text-xs text-muted">
+              Esta semana: {card.weekCompleted} entrenos · {formatKg(card.weekVolume)} kg
+            </p>
             <p className="mt-4 text-sm text-muted">
               {card.last
                 ? `Último ${relativeTime(card.last.startedAt)} · ${card.summary}`

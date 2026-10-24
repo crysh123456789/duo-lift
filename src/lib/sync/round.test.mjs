@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { isLegacySeedId } from "../seed.ts";
 import {
   historyPreserved,
   missingWorkoutIds,
@@ -133,5 +134,41 @@ describe("first upload", () => {
       true,
     );
     assert.equal(serverKeptWorkouts(sent, null, []), false);
+  });
+
+  test("never emits tombstones for w-cr, w-am, or rx seed ids", () => {
+    const local = gym({
+      workouts: [workout("w-cr-d5"), workout("w-am-d1"), workout("w-phone")],
+    });
+    const stones = tombstonesForRound(
+      true,
+      local,
+      [
+        { entity: "workouts", id: "w-cr-d5" },
+        { entity: "sets", id: "w-cr-d5-b1-s1-1" },
+        { entity: "sets", id: "set-user" },
+      ],
+      [
+        { entity: "workouts", id: "w-am-d1" },
+        { entity: "reactions", id: "rx-am-d1-fire" },
+      ],
+      {},
+    );
+    assert.deepEqual(stones, [{ entity: "sets", id: "set-user" }]);
+    const prepared = prepareSyncSnapshot(
+      local,
+      gym(),
+      [
+        { entity: "workouts", id: "w-cr-d5" },
+        { entity: "workouts", id: "w-am-d1" },
+        { entity: "reactions", id: "rx-am-d1-fire" },
+        { entity: "sets", id: "set-user" },
+      ],
+      { preferLocal: true, remindersFromServer: false },
+    );
+    assert.equal(prepared.tombstones.some((row) => isLegacySeedId(row.id)), false);
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-cr-d5"), true);
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-am-d1"), true);
+    assert.equal(prepared.keepsHistory, true);
   });
 });

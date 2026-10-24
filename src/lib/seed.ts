@@ -507,12 +507,79 @@ export function createSeed(): GymData {
   };
 }
 
-function isLegacySeedId(id: string) {
+/** Demo rows shipped in the first seed: Cristian `w-cr-*`, Kviedes `w-am-*`, and `rx-*`. */
+export function isLegacySeedId(id: string) {
   return id.startsWith("w-cr-") || id.startsWith("w-am-") || id.startsWith("rx-");
 }
 
-export function stripLegacySeed(data: Partial<GymData>): Partial<GymData> {
-  const workouts = (data.workouts ?? []).filter((w) => !isLegacySeedId(w.id));
+function sortedById<T extends { id: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function workoutContent(row: Workout) {
+  return JSON.stringify({
+    id: row.id,
+    userId: row.userId,
+    status: row.status,
+    title: row.title,
+    notes: row.notes,
+    perceivedExertion: row.perceivedExertion,
+    startedAt: row.startedAt,
+    endedAt: row.endedAt,
+  });
+}
+
+function setContent(row: SetLog) {
+  return JSON.stringify({
+    id: row.id,
+    stationId: row.stationId,
+    roundIndex: row.roundIndex,
+    setIndex: row.setIndex,
+    reps: row.reps,
+    repsRight: row.repsRight,
+    weightKg: row.weightKg,
+    durationSec: row.durationSec,
+    rpe: row.rpe,
+    isWarmup: row.isWarmup,
+    completed: row.completed,
+  });
+}
+
+/**
+ * True when this seed workout is no longer the untouched demo.
+ * A changed set, an extra set, or any edit on the session counts.
+ * `w-am-*` (Kviedes, unclaimed `user-amigo`) uses the same rule as `w-cr-*`.
+ */
+export function seedWorkoutWasEdited(data: Partial<GymData>, workoutId: string, seed: GymData = createSeed()): boolean {
+  const current = (data.workouts ?? []).find((row) => row.id === workoutId);
+  const original = seed.workouts.find((row) => row.id === workoutId);
+  if (!current) return false;
+  if (!original) return true;
+  if (workoutContent(current) !== workoutContent(original)) return true;
+
+  const currentBlocks = sortedById((data.blocks ?? []).filter((row) => row.workoutId === workoutId));
+  const seedBlocks = sortedById(seed.blocks.filter((row) => row.workoutId === workoutId));
+  if (JSON.stringify(currentBlocks) !== JSON.stringify(seedBlocks)) return true;
+
+  const blockIds = new Set(currentBlocks.map((row) => row.id));
+  const seedBlockIds = new Set(seedBlocks.map((row) => row.id));
+  const currentStations = sortedById((data.stations ?? []).filter((row) => blockIds.has(row.blockId)));
+  const seedStations = sortedById(seed.stations.filter((row) => seedBlockIds.has(row.blockId)));
+  if (JSON.stringify(currentStations) !== JSON.stringify(seedStations)) return true;
+
+  const stationIds = new Set(currentStations.map((row) => row.id));
+  const seedStationIds = new Set(seedStations.map((row) => row.id));
+  const currentSets = sortedById((data.sets ?? []).filter((row) => stationIds.has(row.stationId)));
+  const seedSets = sortedById(seed.sets.filter((row) => seedStationIds.has(row.stationId)));
+  if (currentSets.length !== seedSets.length) return true;
+  return currentSets.some((row, index) => setContent(row) !== setContent(seedSets[index]!));
+}
+
+export function stripLegacySeed(data: Partial<GymData>, seed: GymData = createSeed()): Partial<GymData> {
+  const workouts = (data.workouts ?? []).filter((workout) => {
+    if (!isLegacySeedId(workout.id)) return true;
+    return seedWorkoutWasEdited(data, workout.id, seed);
+  });
   const keepWorkouts = new Set(workouts.map((w) => w.id));
   const blocks = (data.blocks ?? []).filter((b) => keepWorkouts.has(b.workoutId));
   const keepBlocks = new Set(blocks.map((b) => b.id));
@@ -524,7 +591,7 @@ export function stripLegacySeed(data: Partial<GymData>): Partial<GymData> {
     blocks,
     stations,
     sets: (data.sets ?? []).filter((s) => keepStations.has(s.stationId)),
-    reactions: (data.reactions ?? []).filter((r) => keepWorkouts.has(r.workoutId) && !isLegacySeedId(r.id)),
+    reactions: (data.reactions ?? []).filter((r) => keepWorkouts.has(r.workoutId)),
     workingLoads: {},
   };
 }
