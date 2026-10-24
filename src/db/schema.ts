@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   index,
   integer,
@@ -15,7 +16,8 @@ import {
 
 /**
  * Postgres schema aligned with supabase/migrations/0001_init.sql,
- * 0002_duo_local_sync.sql, 0008_soft_delete.sql, and 0009_nutrition_targets.sql.
+ * 0002_duo_local_sync.sql, 0008_soft_delete.sql, 0009_nutrition_targets.sql,
+ * and 0010_food_day_merge.sql.
  * Identifiers are text because the Zustand store uses slugs (`user-cristian`,
  * `ex-banca`) and uuid strings from `nid()`, not auth.users ids.
  */
@@ -212,6 +214,29 @@ export const foodDays = pgTable(
       .on(t.userId, t.date)
       .where(sql`${t.deletedAt} is null`),
     index("food_days_duo_idx").on(t.duoId, t.date),
+  ],
+);
+
+/** Previous food_days row, written by trigger before update or delete. */
+export const foodDayHistory = pgTable(
+  "food_days_history",
+  {
+    historyId: bigint("history_id", { mode: "number" }).generatedAlwaysAsIdentity().primaryKey(),
+    foodDayId: text("food_day_id").notNull(),
+    userId: text("user_id").notNull(),
+    duoId: text("duo_id").notNull(),
+    date: text("date").notNull(),
+    meals: jsonb("meals").notNull(),
+    comment: text("comment").notNull().default(""),
+    rawInput: text("raw_input"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    operation: text("operation").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("food_days_history_user_date_idx").on(t.userId, t.date, t.recordedAt),
+    index("food_days_history_food_day_idx").on(t.foodDayId, t.recordedAt),
   ],
 );
 

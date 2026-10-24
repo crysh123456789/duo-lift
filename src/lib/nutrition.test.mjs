@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { dueReminders, DEFAULT_REMINDERS } from "./reminders.ts";
 import {
+  collapseFoodDays,
   dayTotals,
   emptyMeals,
   formatTotals,
@@ -175,6 +176,61 @@ describe("manual nutrition goals", () => {
     });
     assert.equal(data.users[0].proteinTargetG, 90);
     assert.equal(data.users[0].kcalTarget, 2200);
+  });
+});
+
+describe("duplicate food days", () => {
+  test("keeps non-empty slots and lets the newer item win", () => {
+    const older = {
+      id: "food-old",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: {
+        desayuno: {
+          time: "08:00",
+          note: "casero",
+          items: [
+            { id: "huevo", name: "Huevo", grams: 50, proteinG: 6, carbsG: 0, fatG: 5 },
+            { id: "avena", name: "Avena", grams: 40, proteinG: 5, carbsG: 27, fatG: 3 },
+          ],
+        },
+        cena: { time: "20:00", note: "", items: [{ id: "atun", name: "Atún", grams: 80, proteinG: 20, carbsG: 0, fatG: 1 }] },
+      },
+      comment: "mañana",
+      rawInput: null,
+      updatedAt: "2026-10-20T10:00:00.000Z",
+    };
+    const newer = {
+      id: "food-new",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: {
+        desayuno: {
+          time: "08:30",
+          note: "",
+          items: [{ id: "huevo", name: "Huevo revuelto", grams: 60, proteinG: 8, carbsG: 1, fatG: 6 }],
+        },
+        almuerzo: {
+          time: "13:00",
+          note: "",
+          items: [{ id: "pollo", name: "Pollo", grams: 150, proteinG: 40, carbsG: 0, fatG: 5 }],
+        },
+      },
+      comment: "",
+      rawInput: null,
+      updatedAt: "2026-10-20T18:00:00.000Z",
+    };
+    const [day] = collapseFoodDays([newer, older]);
+    assert.equal(day.id, "food-new");
+    assert.deepEqual(
+      day.meals.desayuno.items.map((item) => item.name),
+      ["Huevo revuelto", "Avena"],
+    );
+    assert.equal(day.meals.desayuno.time, "08:30");
+    assert.equal(day.meals.desayuno.note, "casero");
+    assert.equal(day.meals.almuerzo.items[0].name, "Pollo");
+    assert.equal(day.meals.cena.items[0].name, "Atún");
+    assert.equal(day.comment, "mañana");
   });
 });
 

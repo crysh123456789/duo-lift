@@ -1,3 +1,4 @@
+import { collapseFoodDays } from "@/lib/nutrition";
 import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import type { GymData } from "@/lib/types";
 import { mergeRemoteSnapshot } from "./merge";
@@ -43,7 +44,15 @@ export function historyPreserved(before: GymData, after: GymData, tombstones: To
     const dropped = new Set(tombstones.filter((row) => row.entity === entity).map((row) => row.id));
     const afterIds = new Set((after[entity] ?? []).map((row) => row.id));
     for (const row of before[entity] ?? []) {
-      if (!dropped.has(row.id) && !afterIds.has(row.id)) return false;
+      if (dropped.has(row.id) || afterIds.has(row.id)) continue;
+      if (entity === "foodDays") {
+        const day = row as GymData["foodDays"][number];
+        const absorbed = (after.foodDays ?? []).some(
+          (other) => other.userId === day.userId && other.date === day.date,
+        );
+        if (absorbed) continue;
+      }
+      return false;
     }
   }
   return true;
@@ -85,27 +94,9 @@ export function collapseDuplicateSets(data: GymData): { data: GymData; tombstone
   return { data: { ...data, sets }, tombstones };
 }
 
-/** One live row per person and date. Only the dropped duplicate is a tombstone. */
+/** One live row per person and date. The absorbed id is not a tombstone. */
 export function collapseDuplicateFoodDays(data: GymData): { data: GymData; tombstones: Tombstone[] } {
-  const byDay = new Map<string, GymData["foodDays"]>();
-  for (const row of data.foodDays ?? []) {
-    const key = `${row.userId}\n${row.date}`;
-    const list = byDay.get(key) ?? [];
-    list.push(row);
-    byDay.set(key, list);
-  }
-  const foodDays: GymData["foodDays"] = [];
-  const tombstones: Tombstone[] = [];
-  for (const list of byDay.values()) {
-    const ranked = [...list].sort((a, b) => {
-      if (a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : -1;
-      return a.id.localeCompare(b.id);
-    });
-    const keep = ranked[0];
-    if (keep) foodDays.push(keep);
-    for (const extra of ranked.slice(1)) tombstones.push({ entity: "foodDays", id: extra.id });
-  }
-  return { data: { ...data, foodDays }, tombstones };
+  return { data: { ...data, foodDays: collapseFoodDays(data.foodDays ?? []) }, tombstones: [] };
 }
 
 type PrepareOptions = {

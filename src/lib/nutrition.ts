@@ -147,6 +147,96 @@ export function normalizeFoodDays(days: FoodDay[] | undefined): FoodDay[] {
   return (days ?? []).map((day) => normalizeFoodDay(day));
 }
 
+function slotHasContent(entry: MealEntry): boolean {
+  return mealLogged(entry) || Boolean(entry.time);
+}
+
+/** Same item id: the newer copy wins. Items that exist on only one side stay. */
+function mergeMealItems(older: MealItem[], newer: MealItem[]): MealItem[] {
+  const newerById = new Map(newer.map((item) => [item.id, item]));
+  const seen = new Set<string>();
+  const out: MealItem[] = [];
+  for (const item of older) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(newerById.get(item.id) ?? item);
+  }
+  for (const item of newer) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
+}
+
+/** Newer slot wins field by field. An empty newer slot does not erase a filled one. */
+export function mergeMealSlot(olderValue: unknown, newerValue: unknown): MealEntry {
+  const older = normalizeMealEntry(olderValue);
+  const newer = normalizeMealEntry(newerValue);
+  if (!slotHasContent(newer)) return older;
+  if (!slotHasContent(older)) return newer;
+  return {
+    time: newer.time ?? older.time,
+    note: newer.note.trim() ? newer.note : older.note,
+    items: mergeMealItems(older.items, newer.items),
+  };
+}
+
+export function mergeFoodMeals(olderMeals: unknown, newerMeals: unknown): MealLog {
+  const older = normalizeMealLog(olderMeals);
+  const newer = normalizeMealLog(newerMeals);
+  const meals = emptyMeals();
+  for (const slot of MEAL_SLOTS) meals[slot.id] = mergeMealSlot(older[slot.id], newer[slot.id]);
+  return meals;
+}
+
+function preferNewer(older: FoodDay, newer: FoodDay): boolean {
+  if (newer.updatedAt !== older.updatedAt) return newer.updatedAt > older.updatedAt;
+  return newer.id >= older.id;
+}
+
+/** Folds two days. The newer row keeps the id. Non-empty slots from the other row stay. */
+export function mergeFoodDayPair(older: FoodDay, newer: FoodDay): FoodDay {
+  const newerIsSecond = preferNewer(older, newer);
+  const first = newerIsSecond ? older : newer;
+  const second = newerIsSecond ? newer : older;
+  return {
+    ...second,
+    meals: mergeFoodMeals(first.meals, second.meals),
+    comment: second.comment.trim() ? second.comment : first.comment,
+    rawInput: second.rawInput ?? first.rawInput,
+    updatedAt: second.updatedAt >= first.updatedAt ? second.updatedAt : first.updatedAt,
+  };
+}
+
+/**
+ * One row per person and date. Meals are merged; the other id is omitted and must
+ * not become a tombstone. A real delete is a date with no surviving row.
+ */
+export function collapseFoodDays(rows: FoodDay[] | undefined): FoodDay[] {
+  const groups = new Map<string, FoodDay[]>();
+  for (const row of rows ?? []) {
+    const key = `${row.userId}|${row.date}`;
+    const list = groups.get(key) ?? [];
+    list.push(row);
+    groups.set(key, list);
+  }
+  const out: FoodDay[] = [];
+  for (const list of groups.values()) {
+    const ranked = [...list].sort((a, b) => {
+      if (a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? -1 : 1;
+      return a.id.localeCompare(b.id);
+    });
+    let merged = ranked[0];
+    for (const next of ranked.slice(1)) {
+      if (!merged) break;
+      merged = mergeFoodDayPair(merged, next);
+    }
+    if (merged) out.push(merged);
+  }
+  return out;
+}
+
 export function mealLogged(value: unknown): boolean {
   const meal = normalizeMealEntry(value);
   if (meal.note.trim()) return true;

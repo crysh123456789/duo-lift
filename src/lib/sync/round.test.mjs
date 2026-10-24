@@ -195,24 +195,49 @@ describe("first upload", () => {
     assert.equal(prepared.keepsHistory, true);
   });
 
-  test("tombstones only a duplicate food day for the same date", () => {
+  test("merges a duplicate food day per slot and does not tombstone the absorbed id", () => {
     const older = {
       id: "food-old",
       userId: "user-cristian",
       date: "2026-10-20",
-      meals: {},
-      comment: "",
+      meals: {
+        desayuno: {
+          time: "08:00",
+          note: "",
+          items: [{ id: "huevo", name: "Huevo", grams: 50, proteinG: 6, carbsG: 0, fatG: 5 }],
+        },
+      },
+      comment: "desayuno",
       rawInput: null,
       updatedAt: "2026-10-20T10:00:00.000Z",
     };
-    const newer = { ...older, id: "food-new", updatedAt: "2026-10-20T12:00:00.000Z" };
+    const newer = {
+      ...older,
+      id: "food-new",
+      meals: {
+        almuerzo: {
+          time: "13:00",
+          note: "",
+          items: [{ id: "pollo", name: "Pollo", grams: 150, proteinG: 40, carbsG: 0, fatG: 5 }],
+        },
+      },
+      comment: "",
+      updatedAt: "2026-10-20T12:00:00.000Z",
+    };
     const prepared = prepareSyncSnapshot(gym({ foodDays: [older, newer] }), null, [], { preferLocal: true });
     assert.deepEqual(
       prepared.snapshot.foodDays.map((row) => row.id),
       ["food-new"],
     );
-    assert.deepEqual(prepared.tombstones, [{ entity: "foodDays", id: "food-old" }]);
+    assert.equal(prepared.tombstones.some((row) => row.entity === "foodDays"), false);
+    assert.equal(prepared.snapshot.foodDays[0].meals.desayuno.items[0].name, "Huevo");
+    assert.equal(prepared.snapshot.foodDays[0].meals.almuerzo.items[0].name, "Pollo");
+    assert.equal(prepared.snapshot.foodDays[0].comment, "desayuno");
     assert.equal(prepared.keepsHistory, true);
+    assert.equal(
+      historyPreserved(gym({ foodDays: [older, newer] }), prepared.snapshot, prepared.tombstones),
+      true,
+    );
   });
 
   test("refuses a snapshot that drops a food day without a tombstone", () => {

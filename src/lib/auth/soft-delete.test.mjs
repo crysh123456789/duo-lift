@@ -86,4 +86,27 @@ describe("soft-delete migration", () => {
     const tombstone = targets.indexOf("insert into public.user_tombstones");
     assert.equal(guard >= 0 && tombstone > guard, true);
   });
+
+  test("0010 merges food days, soft-deletes the duplicate, and keeps history", () => {
+    const food = readFileSync(
+      new URL("../../../supabase/migrations/0010_food_day_merge.sql", import.meta.url),
+      "utf8",
+    );
+    assert.match(previous, /delete from public\.food_days legacy/);
+    assert.match(previous, /delete from public\.food_days existing/);
+    assert.equal(/delete from public\.food_days/i.test(food), false);
+    assert.match(food, /create table if not exists public\.food_days_history/);
+    assert.match(food, /before update or delete on public\.food_days/);
+    assert.match(food, /food_days_history_capture/);
+    assert.match(food, /public\.merge_food_meals/);
+    assert.match(food, /public\.resolve_food_day/);
+    assert.match(food, /set deleted_at = now\(\)/);
+    const claim = food.slice(food.indexOf("function private.claim_legacy_history"));
+    assert.match(claim, /for pair in/);
+    assert.match(claim, /public\.merge_food_meals\(pair\.legacy_meals, pair\.dest_meals\)/);
+    assert.match(claim, /public\.merge_food_meals\(pair\.dest_meals, pair\.legacy_meals\)/);
+    assert.equal(/delete from public\.food_days/i.test(claim), false);
+    assert.equal((food.match(/create or replace function public\.sync_apply/g) ?? []).length, 1);
+    assert.equal(/protein_target_g/.test(previous), false);
+  });
 });

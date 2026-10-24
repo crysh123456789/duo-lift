@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { collapseFoodDays } from "../nutrition.ts";
 import { collectTombstones, mergeRemoteSnapshot } from "./merge.ts";
 import { parseSnapshot, parseTombstones, toSyncPayload } from "./payload.ts";
 import { gymFromRows } from "./rows.ts";
@@ -113,6 +114,39 @@ describe("mergeRemoteSnapshot", () => {
     const merged = mergeRemoteSnapshot(local, remote, [], { seed: gym(), remindersFromServer: true });
     assert.equal(merged.foodDays.some((row) => row.id === "food-local"), true);
     assert.equal(merged.workouts.some((row) => row.id === "w-remote"), true);
+  });
+
+  test("collapsing a same-date duplicate does not tombstone the absorbed id", () => {
+    const breakfast = {
+      id: "food-breakfast",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: { desayuno: "huevos" },
+      comment: "",
+      rawInput: null,
+      updatedAt: "2026-10-20T08:00:00.000Z",
+    };
+    const lunch = {
+      id: "food-lunch",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: { almuerzo: "pollo" },
+      comment: "",
+      rawInput: null,
+      updatedAt: "2026-10-20T13:00:00.000Z",
+    };
+    const prev = gym({ foodDays: [breakfast, lunch] });
+    const next = gym({ foodDays: collapseFoodDays(prev.foodDays) });
+    const stones = collectTombstones(prev, next);
+    assert.equal(stones.some((row) => row.entity === "foodDays"), false);
+    assert.equal(next.foodDays.length, 1);
+    assert.equal(next.foodDays[0].meals.desayuno.note, "huevos");
+    assert.equal(next.foodDays[0].meals.almuerzo.note, "pollo");
+    const removed = collectTombstones(prev, gym({ foodDays: [] }));
+    assert.deepEqual(removed, [
+      { entity: "foodDays", id: "food-breakfast" },
+      { entity: "foodDays", id: "food-lunch" },
+    ]);
   });
 
   test("an untouched seed exercise yields to the remote rename", () => {
