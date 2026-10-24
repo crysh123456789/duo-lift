@@ -1,4 +1,4 @@
-import { isLegacySeedId } from "@/lib/seed";
+import { isDemoTombstone } from "@/lib/seed";
 import type { Tombstone } from "./types";
 
 const TOMBSTONE_KEY = "duo-lift-sync-tombstones";
@@ -51,7 +51,7 @@ export function seedLegacyTombstones(userId: string, ownedIds: ReadonlySet<strin
   } catch {
     legacy = [];
   }
-  const mine = legacy.filter((row) => ownedIds.has(row.id) && !isLegacySeedId(row.id));
+  const mine = legacy.filter((row) => ownedIds.has(row.id) && !isDemoTombstone(row));
   if (mine.length > 0) addTombstones(mine);
 }
 

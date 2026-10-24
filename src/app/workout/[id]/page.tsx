@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import { DemoBadge } from "@/components/demo-badge";
 import { PageTitle } from "@/components/page-title";
 import { SessionDateField } from "@/components/session-date-field";
 import { Button, Field, Panel } from "@/components/ui";
@@ -11,13 +12,17 @@ import { DATE_UPDATED, sessionStamp, unclosedBadge } from "@/lib/session-date";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { personName } from "@/lib/people";
+import { isUntouchedDemo } from "@/lib/seed";
 import { useOwnGym } from "@/lib/auth/use-own-gym";
 import { useGymStore } from "@/lib/store";
 import { formatSet, workoutTree, workoutVolume } from "@/lib/workout-tree";
 
 export default function WorkoutDetailPage() {
   const params = useParams<{ id: string }>();
-  const data = useOwnGym();
+  const raw = useGymStore();
+  const own = useOwnGym();
+  const demo = isUntouchedDemo(raw, params.id);
+  const data = demo ? raw : own;
   const addReaction = useGymStore((s) => s.addReaction);
   const setWorkoutDate = useGymStore((s) => s.setWorkoutDate);
   const [comment, setComment] = useState("");
@@ -51,7 +56,15 @@ export default function WorkoutDetailPage() {
         <p className="font-mono text-xs tracking-[0.25em] text-accent uppercase">
           {personName(author)}
         </p>
-        <h1 className="text-3xl font-medium tracking-tight">{tree.title ?? "Entrenamiento"}</h1>
+        <h1 className="flex flex-wrap items-center gap-3 text-3xl font-medium tracking-tight">
+          <span>{tree.title ?? "Entrenamiento"}</span>
+          {demo ? <DemoBadge /> : null}
+        </h1>
+        {demo ? (
+          <p className="mt-2 text-sm text-muted">
+            Ejemplo. No entra en Inicio, en Progreso, en el historial ni en la sincronización.
+          </p>
+        ) : null}
         <p className="mt-1 text-sm text-muted">
           {whenLabel(tree.startedAt)} · {dayFull(tree.startedAt)} · {Math.round(workoutVolume(data, tree.id))} kg
           {tree.perceivedExertion ? ` · RPE ${tree.perceivedExertion}` : ""}
@@ -61,7 +74,7 @@ export default function WorkoutDetailPage() {
         ) : null}
       </div>
 
-      {isMine ? (
+      {isMine && !demo ? (
         <SessionDateField
           value={sessionStamp(tree.startedAt)}
           notice={dateNotice}
@@ -153,7 +166,7 @@ export default function WorkoutDetailPage() {
             })
           )}
         </ul>
-        {!isMine ? (
+        {!isMine && !demo ? (
           <div className="mt-4 space-y-2">
             <Button
               variant="primary"

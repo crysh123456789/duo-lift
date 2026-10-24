@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { IDS, nid } from "./ids";
 import { bumpKg, getWorkingLoad, loadKey } from "./loads";
-import { createSeed, mergeGymData, seedWorkoutWasEdited, stripLegacySeed } from "./seed";
+import { createAccountSeed, createSeed, mergeGymData, omitDemo, seedWorkoutWasEdited, stripLegacySeed } from "./seed";
 import { duoUnlocked } from "./session-flag";
 import { inferSplitDay, splitDayByTitle, SPLIT, type SplitDay } from "./split";
 import type {
@@ -90,7 +90,7 @@ function emptySet(stationId: string, roundIndex: number, setIndex: number): SetL
 export const useGymStore = create<GymStore>()(
   persist(
     (set, get) => ({
-      ...createSeed(),
+      ...createAccountSeed(),
       activeUserId: IDS.cristian,
 
       switchUser: (userId) => set({ activeUserId: userId }),
@@ -573,10 +573,8 @@ export const useGymStore = create<GymStore>()(
       migrate: (persistedState, fromVersion) => {
         const persisted = (persistedState ?? {}) as Partial<GymStore>;
         const cleaned = fromVersion < 6 ? stripLegacySeed(persisted) : persisted;
-        const merged = mergeGymData(cleaned, createSeed(), { preferSeedLoads: fromVersion < 6 });
+        const merged = mergeGymData(cleaned, createAccountSeed(), { preferSeedLoads: fromVersion < 6 });
         if (fromVersion < 6) {
-          // mergeGymData puts the template rows back. Drop pristine ones again
-          // and leave working loads from the merge untouched.
           const dropped = stripLegacySeed(merged);
           merged.workouts = dropped.workouts ?? [];
           merged.blocks = dropped.blocks ?? [];
@@ -598,15 +596,16 @@ export const useGymStore = create<GymStore>()(
           });
           merged.duo = { ...merged.duo, name: seed.duo.name };
         }
+        const real = omitDemo(merged);
         return {
           ...cleaned,
-          ...merged,
+          ...real,
           activeUserId: (cleaned as Partial<GymStore>).activeUserId ?? IDS.cristian,
         };
       },
       merge: (persistedState, currentState) => {
         const persisted = (persistedState ?? {}) as Partial<GymStore>;
-        const data = mergeGymData(persisted, createSeed());
+        const data = omitDemo(mergeGymData(persisted, createAccountSeed()));
         return {
           ...currentState,
           ...persisted,

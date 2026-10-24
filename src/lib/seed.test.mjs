@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { createSeed, isLegacySeedId, mergeGymData, seedWorkoutWasEdited, stripLegacySeed } from "./seed.ts";
+import {
+  createAccountSeed,
+  createSeed,
+  isLegacySeedId,
+  isUntouchedDemo,
+  mergeGymData,
+  omitDemo,
+  seedWorkoutWasEdited,
+  stripLegacySeed,
+} from "./seed.ts";
 
 function workoutIdForSet(data, setId) {
   const set = data.sets.find((row) => row.id === setId);
@@ -74,5 +83,33 @@ describe("legacy seed cleanup", () => {
     assert.equal(dropped.workouts.some((row) => row.id === "w-cr-d4"), false);
     assert.equal(dropped.workouts.some((row) => row.id === "w-am-d4"), false);
     assert.equal(merged.workouts.some((row) => row.id === "w-cr-d4"), true);
+  });
+
+  test("a drifted clock is still demo, and a date correction is not", () => {
+    const seed = createSeed();
+    const drifted = structuredClone(seed);
+    const workout = drifted.workouts.find((row) => row.id === "w-cr-d4");
+    workout.startedAt = "2020-01-01T18:12:00.000Z";
+    assert.equal(isUntouchedDemo(drifted, "w-cr-d4", seed), true);
+    assert.equal(omitDemo(drifted, seed).workouts.some((row) => row.id === "w-cr-d4"), false);
+
+    const corrected = structuredClone(seed);
+    const edited = corrected.workouts.find((row) => row.id === "w-cr-d5");
+    edited.startedAt = "2026-02-02T18:12:00.000Z";
+    edited.updatedAt = "2026-02-02T19:00:00.000Z";
+    assert.equal(isUntouchedDemo(corrected, "w-cr-d5", seed), false);
+    assert.equal(omitDemo(corrected, seed).workouts.some((row) => row.id === "w-cr-d5"), true);
+  });
+
+  test("a new account seed has no example history and no example loads", () => {
+    const account = createAccountSeed();
+    assert.equal(account.workouts.length, 0);
+    assert.equal(account.blocks.length, 0);
+    assert.equal(account.sets.length, 0);
+    assert.equal(account.reactions.length, 0);
+    assert.deepEqual(account.workingLoads, {});
+    assert.equal(account.exercises.length > 0, true);
+    assert.equal(omitDemo(createSeed()).workouts.length, 0);
+    assert.deepEqual(omitDemo(createSeed()).workingLoads, {});
   });
 });

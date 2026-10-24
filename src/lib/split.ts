@@ -1,4 +1,4 @@
-import { EX } from "./seed";
+import { EX, omitDemo } from "./seed";
 import { todayStamp } from "./nutrition";
 import type { GymData, Workout } from "./types";
 
@@ -116,6 +116,7 @@ export function inferSplitDay(data: GymData, workout: Workout): SplitDay | null 
 }
 
 export function lastCompletedWorkout(data: GymData): Workout | undefined {
+  data = omitDemo(data);
   return [...data.workouts]
     .filter((w) => w.status === "completed")
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
@@ -131,6 +132,7 @@ export function nextSplitDay(data: GymData): SplitDay {
 }
 
 export function trainedToday(data: GymData, userId: string, now = new Date()): boolean {
+  data = omitDemo(data);
   const stamp = todayStamp(now);
   return data.workouts.some(
     (w) =>

@@ -34,17 +34,31 @@ describe("inicio and progreso counts", () => {
 
   test("a lone account still counts rows left on one legacy person id", () => {
     const data = createSeed();
-    const legacy = data.workouts.filter((row) => row.userId === "user-cristian");
     data.users = [
       {
         ...data.users[0],
         id: AUTH,
       },
     ];
-    data.workouts = legacy;
+    data.workouts = [
+      completed("w-real-1", "user-cristian", "2026-01-02T18:00:00.000Z"),
+      completed("w-real-2", "user-cristian", "2026-01-03T18:00:00.000Z"),
+    ];
     const stats = personTrainingStats(data, AUTH, new Date());
-    assert.equal(stats.completed, legacy.length);
-    assert.equal(stats.completed > 0, true);
+    assert.equal(stats.completed, 2);
+  });
+
+  test("untouched demo stays out of inicio and progreso", () => {
+    const data = createSeed();
+    const stats = personTrainingStats(data, "user-cristian", new Date());
+    assert.equal(stats.completed, 0);
+    assert.equal(stats.weekCompleted, 0);
+    assert.equal(stats.volume, 0);
+    const days = dailyVolume(data, 14, new Date());
+    assert.equal(
+      days.some((row) => data.users.some((user) => Number(row[user.id] ?? 0) > 0)),
+      false,
+    );
   });
 
   test("progreso includes every session date instead of four empty days", () => {

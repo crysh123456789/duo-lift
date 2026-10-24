@@ -507,9 +507,48 @@ export function createSeed(): GymData {
   };
 }
 
+/** Account shell: exercises and reminders, with no example sessions and no example loads. */
+export function createAccountSeed(): GymData {
+  const seed = createSeed();
+  return {
+    ...seed,
+    workouts: [],
+    blocks: [],
+    stations: [],
+    sets: [],
+    reactions: [],
+    workingLoads: {},
+  };
+}
+
 /** Demo rows shipped in the first seed: Cristian `w-cr-*`, Kviedes `w-am-*`, and `rx-*`. */
 export function isLegacySeedId(id: string) {
   return id.startsWith("w-cr-") || id.startsWith("w-am-") || id.startsWith("rx-");
+}
+
+function loadSignature(load: { weightKg: number; reps: number; repsRight: number | null }) {
+  return `${load.weightKg}|${load.reps}|${load.repsRight ?? ""}`;
+}
+
+function exerciseIdFromLoadKey(key: string) {
+  const colon = key.indexOf(":");
+  return colon < 0 ? "" : key.slice(colon + 1);
+}
+
+/** True when this id is example content that must not be deleted on the server. */
+export function isDemoTombstone(
+  row: { entity?: string; id: string },
+  data?: Partial<GymData>,
+  seed: GymData = createSeed(),
+): boolean {
+  if (isLegacySeedId(row.id)) return true;
+  if (row.entity !== "workingLoads") return false;
+  const exerciseId = exerciseIdFromLoadKey(row.id);
+  const examples = Object.entries(seed.workingLoads).filter(([key]) => key.endsWith(`:${exerciseId}`));
+  if (examples.length === 0) return false;
+  const current = data?.workingLoads?.[row.id];
+  if (!current) return true;
+  return examples.some(([, load]) => loadSignature(load) === loadSignature(current));
 }
 
 function sortedById<T extends { id: string }>(rows: T[]): T[] {
@@ -529,57 +568,135 @@ function workoutContent(row: Workout) {
   });
 }
 
-function setContent(row: SetLog) {
-  return JSON.stringify({
-    id: row.id,
-    stationId: row.stationId,
-    roundIndex: row.roundIndex,
-    setIndex: row.setIndex,
-    reps: row.reps,
-    repsRight: row.repsRight,
-    weightKg: row.weightKg,
-    durationSec: row.durationSec,
-    rpe: row.rpe,
-    isWarmup: row.isWarmup,
-    completed: row.completed,
-  });
+const VOLATILE = new Set([
+  "startedAt",
+  "endedAt",
+  "loggedAt",
+  "createdAt",
+  "updatedAt",
+  "userId",
+  "duoId",
+  "fromUserId",
+]);
+
+/** Compare training content. Clocks and owner ids move without making the example real. */
+function contentShape(value: unknown): string {
+  const strip = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(strip);
+    if (input && typeof input === "object") {
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(input as Record<string, unknown>).sort()) {
+        if (VOLATILE.has(key)) continue;
+        out[key] = strip((input as Record<string, unknown>)[key]);
+      }
+      return out;
+    }
+    return input;
+  };
+  return JSON.stringify(strip(value));
+}
+
+function sameContent<T>(left: T[], right: T[]) {
+  return contentShape(sortedById(left as { id: string }[])) === contentShape(sortedById(right as { id: string }[]));
+}
+
+/**
+ * Untouched example session. A different clock still counts as the demo.
+ * A saved date correction (`updatedAt`), a changed set, or any other edit does not.
+ * `w-am-*` uses the same rule as `w-cr-*`.
+ */
+export function isUntouchedDemo(data: Partial<GymData>, workoutId: string, seed: GymData = createSeed()): boolean {
+  if (!isLegacySeedId(workoutId)) return false;
+  const current = (data.workouts ?? []).find((row) => row.id === workoutId);
+  const original = seed.workouts.find((row) => row.id === workoutId);
+  if (!current || !original || current.updatedAt) return false;
+  if (contentShape(current) !== contentShape(original)) return false;
+
+  const currentBlocks = (data.blocks ?? []).filter((row) => row.workoutId === workoutId);
+  const seedBlocks = seed.blocks.filter((row) => row.workoutId === workoutId);
+  if (!sameContent(currentBlocks, seedBlocks)) return false;
+
+  const blockIds = new Set(currentBlocks.map((row) => row.id));
+  const seedBlockIds = new Set(seedBlocks.map((row) => row.id));
+  const currentStations = (data.stations ?? []).filter((row) => blockIds.has(row.blockId));
+  const seedStations = seed.stations.filter((row) => seedBlockIds.has(row.blockId));
+  if (!sameContent(currentStations, seedStations)) return false;
+
+  const stationIds = new Set(currentStations.map((row) => row.id));
+  const seedStationIds = new Set(seedStations.map((row) => row.id));
+  const currentSets = (data.sets ?? []).filter((row) => stationIds.has(row.stationId));
+  const seedSets = seed.sets.filter((row) => seedStationIds.has(row.stationId));
+  return sameContent(currentSets, seedSets);
 }
 
 /**
  * True when this seed workout is no longer the untouched demo.
- * A changed set, an extra set, or any edit on the session counts.
- * `w-am-*` (Kviedes, unclaimed `user-amigo`) uses the same rule as `w-cr-*`.
+ * A changed set, an extra set, a date correction, or any edit on the session counts.
  */
 export function seedWorkoutWasEdited(data: Partial<GymData>, workoutId: string, seed: GymData = createSeed()): boolean {
   const current = (data.workouts ?? []).find((row) => row.id === workoutId);
   const original = seed.workouts.find((row) => row.id === workoutId);
   if (!current) return false;
   if (!original) return true;
+  if (!isUntouchedDemo(data, workoutId, seed)) return true;
   if (workoutContent(current) !== workoutContent(original)) return true;
-
-  const currentBlocks = sortedById((data.blocks ?? []).filter((row) => row.workoutId === workoutId));
-  const seedBlocks = sortedById(seed.blocks.filter((row) => row.workoutId === workoutId));
-  if (JSON.stringify(currentBlocks) !== JSON.stringify(seedBlocks)) return true;
-
-  const blockIds = new Set(currentBlocks.map((row) => row.id));
-  const seedBlockIds = new Set(seedBlocks.map((row) => row.id));
-  const currentStations = sortedById((data.stations ?? []).filter((row) => blockIds.has(row.blockId)));
-  const seedStations = sortedById(seed.stations.filter((row) => seedBlockIds.has(row.blockId)));
-  if (JSON.stringify(currentStations) !== JSON.stringify(seedStations)) return true;
-
-  const stationIds = new Set(currentStations.map((row) => row.id));
-  const seedStationIds = new Set(seedStations.map((row) => row.id));
+  const blockIds = new Set((data.blocks ?? []).filter((row) => row.workoutId === workoutId).map((row) => row.id));
+  const stationIds = new Set((data.stations ?? []).filter((row) => blockIds.has(row.blockId)).map((row) => row.id));
+  const seedBlockIds = new Set(seed.blocks.filter((row) => row.workoutId === workoutId).map((row) => row.id));
+  const seedStationIds = new Set(seed.stations.filter((row) => seedBlockIds.has(row.blockId)).map((row) => row.id));
   const currentSets = sortedById((data.sets ?? []).filter((row) => stationIds.has(row.stationId)));
   const seedSets = sortedById(seed.sets.filter((row) => seedStationIds.has(row.stationId)));
-  if (currentSets.length !== seedSets.length) return true;
-  return currentSets.some((row, index) => setContent(row) !== setContent(seedSets[index]!));
+  return currentSets.some((row, index) => row.loggedAt !== seedSets[index]?.loggedAt);
+}
+
+function isUntouchedDemoReaction(data: Partial<GymData>, seed: GymData, reactionId: string) {
+  if (!isLegacySeedId(reactionId)) return false;
+  const current = (data.reactions ?? []).find((row) => row.id === reactionId);
+  const original = seed.reactions.find((row) => row.id === reactionId);
+  if (!current || !original) return false;
+  return contentShape(current) === contentShape(original);
+}
+
+function omitDemoLoads(
+  loads: GymData["workingLoads"] | undefined,
+  seed: GymData,
+): GymData["workingLoads"] {
+  const examples = new Set(
+    Object.entries(seed.workingLoads).map(
+      ([key, load]) => `${exerciseIdFromLoadKey(key)}|${loadSignature(load)}`,
+    ),
+  );
+  return Object.fromEntries(
+    Object.entries(loads ?? {}).filter(([key, load]) => {
+      return !examples.has(`${exerciseIdFromLoadKey(key)}|${loadSignature(load)}`);
+    }),
+  );
+}
+
+/** Drops untouched example sessions and example loads. Edited seed rows stay. */
+export function omitDemo<T extends Partial<GymData>>(data: T, seed: GymData = createSeed()): T {
+  const drop = new Set(
+    (data.workouts ?? []).filter((row) => isUntouchedDemo(data, row.id, seed)).map((row) => row.id),
+  );
+  const droppedBlocks = new Set((data.blocks ?? []).filter((row) => drop.has(row.workoutId)).map((row) => row.id));
+  const droppedStations = new Set(
+    (data.stations ?? []).filter((row) => droppedBlocks.has(row.blockId)).map((row) => row.id),
+  );
+  return {
+    ...data,
+    workouts: (data.workouts ?? []).filter((row) => !drop.has(row.id)),
+    blocks: (data.blocks ?? []).filter((row) => !droppedBlocks.has(row.id)),
+    stations: (data.stations ?? []).filter((row) => !droppedStations.has(row.id)),
+    sets: (data.sets ?? []).filter((row) => !droppedStations.has(row.stationId)),
+    reactions: (data.reactions ?? []).filter(
+      (row) => !drop.has(row.workoutId) && !isUntouchedDemoReaction(data, seed, row.id),
+    ),
+    workingLoads: omitDemoLoads(data.workingLoads, seed),
+  };
 }
 
 export function stripLegacySeed(data: Partial<GymData>, seed: GymData = createSeed()): Partial<GymData> {
-  const workouts = (data.workouts ?? []).filter((workout) => {
-    if (!isLegacySeedId(workout.id)) return true;
-    return seedWorkoutWasEdited(data, workout.id, seed);
-  });
+  const workouts = (data.workouts ?? []).filter((workout) => !isUntouchedDemo(data, workout.id, seed));
   const keepWorkouts = new Set(workouts.map((w) => w.id));
   const blocks = (data.blocks ?? []).filter((b) => keepWorkouts.has(b.workoutId));
   const keepBlocks = new Set(blocks.map((b) => b.id));

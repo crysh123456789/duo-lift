@@ -1,4 +1,4 @@
-import { isLegacySeedId } from "@/lib/seed";
+import { isDemoTombstone, omitDemo } from "@/lib/seed";
 import type { GymData } from "@/lib/types";
 import { mergeRemoteSnapshot } from "./merge";
 import { canonicalize } from "./snapshot";
@@ -26,7 +26,7 @@ export function tombstonesForRound(
 ): Tombstone[] {
   const combined = dedupeTombstones(migrated ? [...remoteStones, ...localStones] : localStones);
   return combined.filter((row) => {
-    if (isLegacySeedId(row.id)) return false;
+    if (isDemoTombstone(row, localData)) return false;
     if (!(HISTORY as readonly string[]).includes(row.entity)) return true;
     const rows = localData[row.entity as (typeof HISTORY)[number]];
     const exists = rows.some((item) => item.id === row.id);
@@ -99,14 +99,16 @@ export function prepareSyncSnapshot(
   tombstones: Tombstone[],
   options?: PrepareOptions,
 ): { snapshot: GymData; tombstones: Tombstone[]; keepsHistory: boolean } {
-  const safeTombstones = tombstones.filter((row) => !isLegacySeedId(row.id));
+  const safeTombstones = tombstones.filter((row) => !isDemoTombstone(row, local));
   const merged = mergeRemoteSnapshot(local, remote, safeTombstones, options);
   const collapsed = collapseDuplicateSets(merged);
-  const nextTombstones = dedupeTombstones([...safeTombstones, ...collapsed.tombstones]);
-  const snapshot = canonicalize(collapsed.data);
+  const nextTombstones = dedupeTombstones([...safeTombstones, ...collapsed.tombstones]).filter(
+    (row) => !isDemoTombstone(row, local),
+  );
+  const snapshot = canonicalize(omitDemo(collapsed.data));
   return {
     snapshot,
-    tombstones: nextTombstones.filter((row) => !isLegacySeedId(row.id)),
-    keepsHistory: historyPreserved(local, snapshot, nextTombstones),
+    tombstones: nextTombstones,
+    keepsHistory: historyPreserved(omitDemo(local), snapshot, nextTombstones),
   };
 }

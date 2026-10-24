@@ -7,7 +7,7 @@ import { ackMap, collectTombstones, snapshotsMatch } from "./merge";
 import { parseSnapshot, parseTombstones } from "./payload";
 import { prepareSyncSnapshot, serverKeptWorkouts, tombstonesForRound } from "./round";
 import { getSyncUserId, subscribeSyncUser } from "./session-user";
-import { isLegacySeedId } from "@/lib/seed";
+import { isDemoTombstone } from "@/lib/seed";
 import { snapshotFromState } from "./snapshot";
 import { setSyncPhase } from "./status";
 import {
@@ -164,7 +164,7 @@ export function startGymSync() {
         ...started.foodDays.map((row) => row.id),
         ...Object.keys(started.workingLoads),
       ]);
-      const queuedSeed = readTombstones().filter((row) => isLegacySeedId(row.id));
+      const queuedSeed = readTombstones().filter((row) => isDemoTombstone(row, started));
       if (queuedSeed.length > 0) removeTombstones(queuedSeed);
       seedLegacyTombstones(userId, ownedIds);
       const remoteBody = await pull(signal);
@@ -269,7 +269,7 @@ export function startGymSync() {
       baseline = next;
       return;
     }
-    const stones = collectTombstones(baseline, next);
+    const stones = collectTombstones(baseline, next).filter((row) => !isDemoTombstone(row, baseline));
     baseline = next;
     if (stones.length > 0) addTombstones(stones);
     schedule();

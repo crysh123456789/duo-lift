@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { isLegacySeedId } from "../seed.ts";
+import { createSeed, isLegacySeedId } from "../seed.ts";
 import {
   historyPreserved,
   missingWorkoutIds,
@@ -169,6 +169,26 @@ describe("first upload", () => {
     assert.equal(prepared.tombstones.some((row) => isLegacySeedId(row.id)), false);
     assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-cr-d5"), true);
     assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-am-d1"), true);
+    assert.equal(prepared.keepsHistory, true);
+  });
+
+  test("untouched demo stays out of the upload and does not become a delete", () => {
+    const local = createSeed();
+    const prepared = prepareSyncSnapshot(
+      local,
+      null,
+      [
+        { entity: "workouts", id: "w-cr-d5" },
+        { entity: "workouts", id: "w-am-d1" },
+        { entity: "reactions", id: "rx-am-d1-fire" },
+      ],
+      { preferLocal: true, remindersFromServer: false },
+    );
+    assert.equal(prepared.snapshot.workouts.length, 0);
+    assert.equal(prepared.snapshot.sets.length, 0);
+    assert.equal(prepared.snapshot.reactions.length, 0);
+    assert.equal(Object.keys(prepared.snapshot.workingLoads).length, 0);
+    assert.equal(prepared.tombstones.some((row) => isLegacySeedId(row.id)), false);
     assert.equal(prepared.keepsHistory, true);
   });
 });
