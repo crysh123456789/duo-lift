@@ -5,6 +5,7 @@ import {
   collapseFoodDays,
   dayTotals,
   emptyMeals,
+  formatDayTotals,
   formatTotals,
   macroKcal,
   manualProteinGoal,
@@ -124,6 +125,11 @@ describe("manual nutrition goals", () => {
     const day = dayTotals(breakfastLog());
     assert.equal(formatTotals(day, manualProteinGoal({ weightKg: 60 })), "P 28/— · C 51 · G 21 · 505 kcal");
     assert.equal(formatTotals(day, manualProteinGoal({ proteinTargetG: 90, weightKg: 60 })), "P 28/90 · C 51 · G 21 · 505 kcal");
+    assert.equal(
+      formatDayTotals(day, { proteinTargetG: 120, kcalTarget: 2500, weightKg: 60 }),
+      "P 28/120 · C 51 · G 21 · 505/2500 kcal",
+    );
+    assert.equal(formatDayTotals(day, { weightKg: 60 }), "P 28/— · C 51 · G 21 · 505 kcal");
 
     const withGoal = nutritionComment({ ...cristian, proteinTargetG: 90 }, breakfastLog());
     assert.match(withGoal, /90 g/);

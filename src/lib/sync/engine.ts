@@ -10,7 +10,7 @@ import { getSyncUserId, subscribeSyncUser } from "./session-user";
 import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import { snapshotFromState } from "./snapshot";
 import { rejectedFoodDays } from "./rejected";
-import { setFoodDayRejection, setSyncPhase } from "./status";
+import { markServerHydrated, setFoodDayRejection, setSyncPhase } from "./status";
 import {
   addTombstones,
   readAck,
@@ -141,6 +141,8 @@ export function startGymSync() {
     const settle = (next: Parameters<typeof setSyncPhase>[0]) => {
       open = false;
       setSyncPhase(next);
+      // A round that never had a user must not unlock stale Inicio figures.
+      if (getSyncUserId()) markServerHydrated();
     };
     try {
       if (stopped || epoch !== syncEpoch) return;

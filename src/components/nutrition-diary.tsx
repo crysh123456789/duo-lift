@@ -18,6 +18,7 @@ import {
   blankMealItem,
   dayTotals,
   foodDayFor,
+  formatDayTotals,
   formatTotals,
   mealLogged,
   mealSummary,
@@ -132,13 +133,12 @@ function DayScreen({
   const saved = foodDayFor(data, data.activeUserId, date);
   const meals = saved?.meals ?? normalizeMealLog(undefined);
   const totals = dayTotals(meals);
-  const goal = manualProteinGoal(me);
+  const totalsLabel = formatDayTotals(totals, me);
   const prompt = nextMealPrompt(meals);
   const quickSlot = prompt?.id ?? "cena";
   const quickLabel = MEAL_SLOTS.find((slot) => slot.id === quickSlot)?.label ?? "Cena";
   const proteinLabel = date === todayStamp() ? PROTEIN_TODAY_LABEL : "Proteína";
   const [goalsOpen, setGoalsOpen] = useState(false);
-  const totalsLabel = formatTotals(totals, goal);
 
   return (
     <div className="space-y-4">
@@ -222,7 +222,6 @@ function DayScreen({
 function HistoryList({ selected, onOpen }: { selected: string; onOpen: (stamp: string) => void }) {
   const data = useGymStore();
   const me = data.users.find((user) => user.id === data.activeUserId);
-  const goal = manualProteinGoal(me);
   const mine = [...(data.foodDays ?? [])]
     .filter((day) => day.userId === data.activeUserId && day.date !== selected)
     .map((day) => ({ ...day, meals: normalizeMealLog(day.meals) }))
@@ -244,7 +243,7 @@ function HistoryList({ selected, onOpen }: { selected: string; onOpen: (stamp: s
               <span className="flex items-baseline justify-between gap-3">
                 <span className="text-sm font-medium">{whenLabel(`${day.date}T12:00:00`)}</span>
                 <span className="font-mono text-[11px] tabular-nums text-muted">
-                  {formatTotals(dayTotals(day.meals), goal)}
+                  {formatDayTotals(dayTotals(day.meals), me)}
                 </span>
               </span>
               <span className="mt-2 block space-y-1">
@@ -302,9 +301,9 @@ function MealEditor({
   const [legacyNote] = useState(() => meals[slot].note.trim().length > 0);
   const [noteOpen, setNoteOpen] = useState(false);
   const [goalsOpen, setGoalsOpen] = useState(false);
-  const goal = manualProteinGoal(me);
   const proteinLabel = date === todayStamp() ? PROTEIN_TODAY_LABEL : "Proteína";
   const draftMeals: MealLog = { ...meals, [slot]: entry };
+  const dayLabel = formatDayTotals(dayTotals(draftMeals), me);
   const showNote = legacyNote || noteOpen || entry.note.trim().length > 0;
 
   function patchItem(id: string, patch: Partial<MealItem>) {
@@ -377,11 +376,11 @@ function MealEditor({
           type="button"
           onClick={() => setGoalsOpen(true)}
           aria-haspopup="dialog"
-          aria-label={`${proteinLabel} ${formatTotals(dayTotals(draftMeals), goal)}. Editar meta manual`}
+          aria-label={`${proteinLabel} ${dayLabel}. Editar meta manual`}
           className="flex min-h-11 w-full flex-col items-start justify-center rounded-xl text-left"
         >
           <span className="text-[11px] uppercase tracking-wider text-muted">{proteinLabel}</span>
-          <span className="font-mono text-sm tabular-nums">{formatTotals(dayTotals(draftMeals), goal)}</span>
+          <span className="font-mono text-sm tabular-nums">{dayLabel}</span>
         </button>
       </div>
       {goalsOpen ? <ManualGoalSheet onClose={() => setGoalsOpen(false)} /> : null}

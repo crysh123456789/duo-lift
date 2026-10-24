@@ -7,7 +7,7 @@ import {
 import { es } from "date-fns/locale";
 import { whenLabel } from "./format";
 import { omitSeedHistory } from "./seed";
-import { shiftStamp, todayStamp } from "./nutrition";
+import { todayStamp } from "./nutrition";
 import { staleOpenWorkout, todayOpenWorkout } from "./session-date";
 import type { GymData } from "./types";
 import { workoutTree, workoutVolume } from "./workout-tree";
@@ -55,44 +55,86 @@ function chartUserId(data: GymData, workoutUserId: string): string | null {
   return null;
 }
 
-/** Every calendar day from the oldest session through today, at least `dayCount` days. */
+/**
+ * One column per training day, from the oldest session through the newest.
+ * Empty calendar days are omitted so an early session is not pushed off a
+ * fixed window. `dayCount` stays in the signature for callers; the range is
+ * the full history. A zero-kg session sets `${userId}__zero` to 1.
+ */
 export function dailyVolume(data: GymData, dayCount = 14, now = new Date()) {
+  // Callers still pass a window size. The chart uses the full history instead,
+  // so that number must not become the clock.
+  void dayCount;
   data = omitSeedHistory(data);
-  const end = todayStamp(now);
-  const windowStart = new Date(now);
-  windowStart.setHours(12, 0, 0, 0);
-  windowStart.setDate(windowStart.getDate() - (dayCount - 1));
-  let start = todayStamp(windowStart);
+  const byStamp = new Map<string, GymData["workouts"]>();
   for (const workout of data.workouts) {
     if (workout.status === "abandoned") continue;
     const stamp = todayStamp(new Date(workout.startedAt));
-    if (stamp < start) start = stamp;
+    const list = byStamp.get(stamp) ?? [];
+    list.push(workout);
+    byStamp.set(stamp, list);
   }
-  if (start > end) start = end;
 
   const rows: Record<string, string | number>[] = [];
-  for (let stamp = start, guard = 0; stamp <= end && guard < 4000; stamp = shiftStamp(stamp, 1), guard += 1) {
+  for (const stamp of [...byStamp.keys()].sort()) {
     const day = new Date(`${stamp}T12:00:00`);
     const volumes: Record<string, number> = {};
-    for (const user of data.users) volumes[user.id] = 0;
-    for (const workout of data.workouts) {
-      if (workout.status === "abandoned") continue;
-      if (todayStamp(new Date(workout.startedAt)) !== stamp) continue;
+    const trained: Record<string, boolean> = {};
+    for (const user of data.users) {
+      volumes[user.id] = 0;
+      trained[user.id] = false;
+    }
+    for (const workout of byStamp.get(stamp) ?? []) {
       const owner = chartUserId(data, workout.userId);
       if (!owner) continue;
       const draft = workout.status === "in_progress";
       volumes[owner] = (volumes[owner] ?? 0) + workoutVolume(data, workout.id, { draft });
+      trained[owner] = true;
     }
+    if (!data.users.some((user) => trained[user.id])) continue;
     const row: Record<string, string | number> = {
       label: whenLabel(day.toISOString(), now),
       stamp,
     };
     for (const user of data.users) {
-      row[user.id] = Math.round(volumes[user.id] ?? 0);
+      const kg = Math.round(volumes[user.id] ?? 0);
+      row[user.id] = kg;
+      row[`${user.id}__zero`] = trained[user.id] && kg === 0 ? 1 : 0;
     }
     rows.push(row);
   }
   return rows;
+}
+
+/** Counts and the open-session card stay blank until the first sync round settles. */
+export function homeDashboardState<T>(
+  hydrated: boolean,
+  figures: {
+    completed: number;
+    volume: number;
+    weekCompleted: number;
+    weekVolume: number;
+    stale: T[];
+  },
+): {
+  ready: boolean;
+  completed: number | null;
+  volume: number | null;
+  weekCompleted: number | null;
+  weekVolume: number | null;
+  stale: T[];
+} {
+  if (!hydrated) {
+    return {
+      ready: false,
+      completed: null,
+      volume: null,
+      weekCompleted: null,
+      weekVolume: null,
+      stale: [],
+    };
+  }
+  return { ready: true, ...figures };
 }
 
 export function lastOpenOrCompleted(data: GymData, userId: string, now = new Date()) {

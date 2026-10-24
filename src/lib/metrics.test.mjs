@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { dailyVolume, personTrainingStats } from "./metrics.ts";
+import { dailyVolume, homeDashboardState, personTrainingStats } from "./metrics.ts";
 import { todayStamp } from "./nutrition.ts";
 import { createSeed } from "./seed.ts";
 
@@ -71,8 +71,9 @@ describe("inicio and progreso counts", () => {
     const days = dailyVolume(data, 14, now);
     assert.equal(days.length > 4, true);
     assert.equal(days[0].stamp, todayStamp(new Date(2026, 0, 1, 18)));
-    assert.equal(days.at(-1).stamp, todayStamp(now));
+    assert.equal(days.at(-1).stamp, todayStamp(new Date(2026, 0, 1 + 12 * 3, 18)));
     const sessionDays = new Set(data.workouts.map((row) => todayStamp(new Date(row.startedAt))));
+    assert.equal(days.length, sessionDays.size);
     for (const stamp of sessionDays) {
       assert.equal(
         days.some((row) => row.stamp === stamp),
@@ -80,5 +81,97 @@ describe("inicio and progreso counts", () => {
         stamp,
       );
     }
+  });
+
+  test("progreso keeps August 19 and 20 and marks a zero-volume day", () => {
+    const data = createSeed();
+    data.users = data.users.filter((row) => row.id === "user-cristian");
+    const stamps = [
+      [2026, 7, 19],
+      [2026, 7, 20],
+      [2026, 7, 27],
+      [2026, 7, 28],
+      [2026, 7, 31],
+      [2026, 8, 2],
+      [2026, 8, 3],
+      [2026, 8, 8],
+      [2026, 8, 9],
+      [2026, 8, 10],
+      [2026, 8, 12],
+    ];
+    data.workouts = stamps.map(([year, month, day], index) =>
+      completed(`w-${index}`, "user-cristian", new Date(year, month, day, 18).toISOString()),
+    );
+    const exerciseId = data.exercises[0].id;
+    data.blocks = [
+      {
+        id: "b-aug19",
+        workoutId: "w-0",
+        position: 0,
+        kind: "straight",
+        name: null,
+        targetRounds: 1,
+        restBetweenRoundsSec: null,
+        restSec: null,
+      },
+    ];
+    data.stations = [
+      { id: "st-aug19", blockId: "b-aug19", exerciseId, position: 0, notes: null },
+    ];
+    data.sets = [
+      {
+        id: "set-aug19",
+        stationId: "st-aug19",
+        roundIndex: 1,
+        setIndex: 1,
+        reps: 5,
+        repsRight: null,
+        weightKg: 20,
+        durationSec: null,
+        rpe: null,
+        isWarmup: false,
+        completed: true,
+        loggedAt: new Date(2026, 7, 19, 19).toISOString(),
+      },
+    ];
+    const now = new Date(2026, 9, 24, 12);
+    const days = dailyVolume(data, 14, now);
+    assert.equal(days[0].stamp, todayStamp(new Date(2026, 7, 19, 18)));
+    assert.equal(days.some((row) => row.stamp === todayStamp(new Date(2026, 7, 20, 18))), true);
+    assert.equal(days.length, stamps.length);
+    assert.equal(days[0]["user-cristian"], 100);
+    assert.equal(days[0]["user-cristian__zero"], 0);
+    const quiet = days.find((row) => row.stamp === todayStamp(new Date(2026, 8, 12, 18)));
+    assert.equal(quiet["user-cristian"], 0);
+    assert.equal(quiet["user-cristian__zero"], 1);
+    assert.equal(
+      days.some((row) => row.stamp === todayStamp(new Date(2026, 7, 24, 12))),
+      false,
+    );
+  });
+
+  test("inicio hides the count and the open session until sync settles", () => {
+    const open = { id: "w-sep12", status: "in_progress" };
+    const hidden = homeDashboardState(false, {
+      completed: 12,
+      volume: 4000,
+      weekCompleted: 1,
+      weekVolume: 200,
+      stale: [open],
+    });
+    assert.equal(hidden.ready, false);
+    assert.equal(hidden.completed, null);
+    assert.equal(hidden.volume, null);
+    assert.deepEqual(hidden.stale, []);
+    const shown = homeDashboardState(true, {
+      completed: 13,
+      volume: 4000,
+      weekCompleted: 0,
+      weekVolume: 0,
+      stale: [],
+    });
+    assert.equal(shown.ready, true);
+    assert.equal(shown.completed, 13);
+    assert.equal(shown.stale.length, 0);
   });
 });

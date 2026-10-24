@@ -1,7 +1,8 @@
 import { collapseFoodDays } from "@/lib/nutrition";
+import { KCAL_TARGET_MAX, PROTEIN_TARGET_MAX, clampDailyTarget } from "@/lib/nutrition";
 import { createSeed } from "@/lib/seed";
 import { workoutClock } from "@/lib/session-date";
-import type { FoodDay, GymData, ReminderSettings } from "@/lib/types";
+import type { FoodDay, GymData, ReminderSettings, User, Workout } from "@/lib/types";
 import { canonicalize, normalizeReminders, sameSnapshot } from "./snapshot";
 import { sameValue, stableStringify } from "./stable";
 import { isTombstoneEntity, type Tombstone, type TombstoneEntity } from "./types";
@@ -163,15 +164,19 @@ export function mergeRemoteSnapshot(
       preferLocal,
       () => "",
     ),
-    workouts: mergeList(
-      "workouts",
+    workouts: reconcileClosedWorkouts(
       local.workouts,
       remote.workouts,
-      seed.workouts,
-      tombstones,
-      ack,
-      preferLocal,
-      (row) => workoutClock(row),
+      mergeList(
+        "workouts",
+        local.workouts,
+        remote.workouts,
+        seed.workouts,
+        tombstones,
+        ack,
+        preferLocal,
+        (row) => workoutClock(row),
+      ),
     ),
     blocks: mergeList("blocks", local.blocks, remote.blocks, seed.blocks, tombstones, ack, preferLocal, () => ""),
     stations: mergeList(
@@ -244,6 +249,64 @@ function applyTombstones(local: GymData, tombstones: Tombstone[]): GymData {
   return { ...local, workouts, blocks, stations, sets, reactions, exercises, foodDays, workingLoads, members };
 }
 
+function ackObject(ack: Record<string, string>, key: string): Record<string, unknown> | null {
+  const raw = ack[key];
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A null on the phone must not hide a goal that was set on the server.
+ * A goal this phone already acknowledged and then cleared stays cleared.
+ */
+function mergeTarget(
+  chosen: number | null | undefined,
+  local: number | null | undefined,
+  remote: number | null | undefined,
+  acked: unknown,
+  max: number,
+): number | null {
+  const chosenValue = clampDailyTarget(chosen, max);
+  const localValue = clampDailyTarget(local, max);
+  const remoteValue = clampDailyTarget(remote, max);
+  const ackedValue = clampDailyTarget(acked, max);
+  if (ackedValue != null && localValue == null) return null;
+  if (chosenValue != null) return chosenValue;
+  if (localValue == null && remoteValue != null) return remoteValue;
+  return null;
+}
+
+function withServerTargets(
+  chosen: User,
+  local: User | undefined,
+  remote: User | undefined,
+  acked: Record<string, unknown> | null,
+): User {
+  return {
+    ...chosen,
+    proteinTargetG: mergeTarget(
+      chosen.proteinTargetG,
+      local?.proteinTargetG,
+      remote?.proteinTargetG,
+      acked?.proteinTargetG,
+      PROTEIN_TARGET_MAX,
+    ),
+    kcalTarget: mergeTarget(
+      chosen.kcalTarget,
+      local?.kcalTarget,
+      remote?.kcalTarget,
+      acked?.kcalTarget,
+      KCAL_TARGET_MAX,
+    ),
+  };
+}
+
 function mergeUsers(
   local: GymData,
   remote: GymData,
@@ -257,17 +320,37 @@ function mergeUsers(
   const ids = new Set([...localById.keys(), ...remoteById.keys()]);
   const out = [];
   for (const id of ids) {
+    const localUser = localById.get(id);
+    const remoteUser = remoteById.get(id);
     const chosen = chooseRow(
-      localById.get(id),
-      remoteById.get(id),
+      localUser,
+      remoteUser,
       seedById.get(id),
       ack[`users:${id}`],
       (row) => row.createdAt,
       preferLocal,
     );
-    if (chosen) out.push(chosen);
+    if (chosen) out.push(withServerTargets(chosen, localUser, remoteUser, ackObject(ack, `users:${id}`)));
   }
   return out;
+}
+
+/**
+ * A session the server already closed is not still open on the phone
+ * unless this phone edited it after that close.
+ */
+function reconcileClosedWorkouts(local: Workout[], remote: Workout[], merged: Workout[]): Workout[] {
+  const localById = new Map(local.map((row) => [row.id, row]));
+  const remoteById = new Map(remote.map((row) => [row.id, row]));
+  return merged.map((row) => {
+    const left = localById.get(row.id);
+    const right = remoteById.get(row.id);
+    if (!left || !right) return row;
+    if (left.status !== "in_progress") return row;
+    if (right.status !== "completed" && right.status !== "abandoned") return row;
+    if (workoutClock(left) > workoutClock(right)) return row;
+    return { ...row, status: right.status, endedAt: right.endedAt };
+  });
 }
 
 function mergeMembers(

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { collapseFoodDays } from "../nutrition.ts";
-import { collectTombstones, mergeRemoteSnapshot } from "./merge.ts";
+import { ackMap, collectTombstones, mergeRemoteSnapshot } from "./merge.ts";
 import { parseSnapshot, parseTombstones, toSyncPayload } from "./payload.ts";
 import { gymFromRows } from "./rows.ts";
 import { sameSnapshot } from "./snapshot.ts";
@@ -184,6 +184,77 @@ describe("mergeRemoteSnapshot", () => {
       remindersFromServer: true,
     });
     assert.equal(dropped.sets.length, 0);
+  });
+
+  test("a null local goal hydrates from the server, even before the first ack", () => {
+    const local = gym();
+    local.users[0] = { ...local.users[0], proteinTargetG: null, kcalTarget: null };
+    const remote = gym();
+    remote.users[0] = { ...remote.users[0], proteinTargetG: 120, kcalTarget: 2500 };
+    const merged = mergeRemoteSnapshot(local, remote, [], {
+      seed: gym(),
+      preferLocal: true,
+      remindersFromServer: false,
+    });
+    assert.equal(merged.users[0].proteinTargetG, 120);
+    assert.equal(merged.users[0].kcalTarget, 2500);
+  });
+
+  test("clearing a goal this phone already saved is not refilled from the server", () => {
+    const saved = gym();
+    saved.users[0] = { ...saved.users[0], proteinTargetG: 120, kcalTarget: 2500 };
+    const local = gym();
+    local.users[0] = { ...local.users[0], proteinTargetG: null, kcalTarget: null };
+    const remote = gym();
+    remote.users[0] = { ...remote.users[0], proteinTargetG: 120, kcalTarget: 2500 };
+    const merged = mergeRemoteSnapshot(local, remote, [], {
+      seed: gym(),
+      ack: ackMap(saved),
+      preferLocal: false,
+      remindersFromServer: true,
+    });
+    assert.equal(merged.users[0].proteinTargetG, null);
+    assert.equal(merged.users[0].kcalTarget, null);
+  });
+
+  test("a server-closed session replaces a stale open copy", () => {
+    const local = gym({
+      workouts: [
+        {
+          id: "w-sep12",
+          userId: "user-cristian",
+          duoId: "duo-1",
+          startedAt: "2026-09-12T15:00:00.000Z",
+          endedAt: null,
+          status: "in_progress",
+          notes: null,
+          perceivedExertion: null,
+          title: "Pierna",
+        },
+      ],
+    });
+    const remote = gym({
+      workouts: [
+        {
+          id: "w-sep12",
+          userId: "user-cristian",
+          duoId: "duo-1",
+          startedAt: "2026-09-12T15:00:00.000Z",
+          endedAt: "2026-09-12T16:10:00.000Z",
+          status: "completed",
+          notes: null,
+          perceivedExertion: null,
+          title: "Pierna",
+        },
+      ],
+    });
+    const merged = mergeRemoteSnapshot(local, remote, [], {
+      seed: gym(),
+      preferLocal: true,
+      remindersFromServer: false,
+    });
+    assert.equal(merged.workouts.find((row) => row.id === "w-sep12").status, "completed");
+    assert.equal(merged.workouts.find((row) => row.id === "w-sep12").endedAt, "2026-09-12T16:10:00.000Z");
   });
 
   test("preferLocal keeps the phone workout even when the server copy is newer", () => {
