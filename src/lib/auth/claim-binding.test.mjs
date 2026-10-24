@@ -58,8 +58,9 @@ describe("legacy claim binding", () => {
     assert.equal(/Pre-created account/.test(sql), false);
     assert.equal(/leave claim_code_hash null/.test(sql), false);
     assert.equal(/Deja `claim_code_hash` en null/.test(readme), false);
-    assert.match(readme, /Se entrega en privado/);
-    assert.match(readme, /claim_code_expires_at = now\(\) \+ interval '24 hours'/);
+    assert.equal(/Traer historial/.test(readme), false);
+    assert.equal(/Historial de Kviedes/.test(readme), false);
+    assert.match(readme, /no muestra una pantalla para traer un historial legado/);
     assert.equal(/claim_code_hash is not null and v_claim\.claimed_by/.test(claim), false);
     const hashNull = claim.indexOf("if v_claim.claim_code_hash is null then");
     const configured = claim.indexOf("raise exception 'claim_not_configured'", hashNull);

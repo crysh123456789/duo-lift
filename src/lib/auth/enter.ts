@@ -45,21 +45,18 @@ export function applyAccountLocally(profile: AccountProfile, next: GymData) {
 }
 
 /**
- * Asks the server whether this account still has to choose a legacy history.
- * A missing decision with nothing left to claim is recorded as clean, server-side.
+ * Signs the account in. The app never presents a legacy claim.
+ * A missing decision with nothing left open is recorded as clean, server-side.
+ * Open legacy rows are left untouched: no claim call and no clean decision.
+ * A decision already stored still retags that history on this phone.
  */
-export async function settleSignedInUser(supabase: StatusClient, user: AuthLike): Promise<"claim" | "in"> {
+export async function settleSignedInUser(supabase: StatusClient, user: AuthLike): Promise<"in"> {
   const { data, error } = await supabase.rpc("legacy_history_status");
   if (error) throw new Error(error.message);
   const status = (data ?? {}) as { decision?: string | null; open?: unknown };
   const decision = typeof status.decision === "string" ? status.decision : null;
   const open = Array.isArray(status.open) ? status.open.filter((item) => typeof item === "string") : [];
-  if (!decision && open.length > 0) {
-    setSyncUserId(null);
-    setDuoUnlocked(false);
-    return "claim";
-  }
-  if (!decision) {
+  if (!decision && open.length === 0) {
     const declined = await supabase.rpc("decline_legacy_history");
     if (declined.error) throw new Error(declined.error.message);
   }

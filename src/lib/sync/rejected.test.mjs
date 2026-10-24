@@ -5,7 +5,6 @@ import { clearFoodDayLimitError, rejectedFoodDays } from "./rejected.ts";
 
 const engine = readFileSync(new URL("./engine.ts", import.meta.url), "utf8");
 const route = readFileSync(new URL("../../app/api/sync/route.ts", import.meta.url), "utf8");
-const claimPage = readFileSync(new URL("../../app/claim/page.tsx", import.meta.url), "utf8");
 
 describe("rejected food days", () => {
   test("reads other-user and foreign ids from the sync_apply body", () => {
@@ -48,11 +47,5 @@ describe("rejected food days", () => {
     assert.match(route, /clearFoodDayLimitError/);
     assert.match(route, /error: clear/);
     assert.equal(/foreignFood/.test(route), false);
-  });
-
-  test("the claim screen sends p_code and treats ok:false as a failure", () => {
-    assert.match(claimPage, /p_code: code\.trim\(\) \|\| null/);
-    assert.match(claimPage, /claimRpcMessage\(result\)/);
-    assert.match(claimPage, /Código de un solo uso/);
   });
 });

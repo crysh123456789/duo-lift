@@ -32,7 +32,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const me = users.find((user) => user.id === activeUserId);
   const name = personName(me);
 
-  if (isAuthScreen(pathname) || pathname === "/claim") return <>{children}</>;
+  if (isAuthScreen(pathname)) return <>{children}</>;
 
   return (
     <div className="min-h-dvh bg-background text-foreground">

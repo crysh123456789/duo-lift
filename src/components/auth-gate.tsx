@@ -97,16 +97,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (authPage || phase === "boot" || phase === "error") return;
     if (phase === "anon") {
       router.replace("/login");
-      return;
     }
-    if (phase === "claim" && pathname !== "/claim") {
-      router.replace("/claim");
-      return;
-    }
-    if (phase === "in" && pathname === "/claim") {
-      router.replace("/");
-    }
-  }, [authPage, phase, pathname, router]);
+  }, [authPage, phase, router]);
 
   if (authPage) return children;
 
@@ -132,7 +124,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  if (phase === "boot" || phase === "anon" || (phase === "claim" && pathname !== "/claim")) {
+  if (phase === "boot" || phase === "anon") {
     return <Splash />;
   }
 

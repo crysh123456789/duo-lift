@@ -1,6 +1,6 @@
-/** Auth gate phase. The claim page and the gate share it so a choice is not raced. */
+/** Auth gate phase. */
 
-export type AuthPhase = "boot" | "anon" | "claim" | "in" | "error";
+export type AuthPhase = "boot" | "anon" | "in" | "error";
 
 let phase: AuthPhase = "boot";
 let epoch = 0;
