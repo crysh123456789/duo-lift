@@ -5,7 +5,7 @@ import type { BlockNode } from "@/lib/workout-tree";
 import { formatLoad } from "@/lib/copy";
 import { getWorkingLoad } from "@/lib/loads";
 import { bestWeight, lastLoggedSet } from "@/lib/metrics";
-import { omitDemo } from "@/lib/seed";
+import { omitSeedHistory } from "@/lib/seed";
 import { useGymStore } from "@/lib/store";
 import { Button, NumberField } from "./ui";
 
@@ -16,7 +16,7 @@ export function StraightBlock({
   block: BlockNode;
   onLogged?: () => void;
 }) {
-  const data = omitDemo(useGymStore());
+  const data = omitSeedHistory(useGymStore());
   const station = block.stations[0];
   const updateSet = useGymStore((s) => s.updateSet);
   const toggleSetComplete = useGymStore((s) => s.toggleSetComplete);

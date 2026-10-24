@@ -1,4 +1,4 @@
-import { isDemoTombstone, omitDemo } from "@/lib/seed";
+import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import type { GymData } from "@/lib/types";
 import { mergeRemoteSnapshot } from "./merge";
 import { canonicalize } from "./snapshot";
@@ -105,10 +105,10 @@ export function prepareSyncSnapshot(
   const nextTombstones = dedupeTombstones([...safeTombstones, ...collapsed.tombstones]).filter(
     (row) => !isDemoTombstone(row, local),
   );
-  const snapshot = canonicalize(omitDemo(collapsed.data));
+  const snapshot = canonicalize(omitSeedHistory(collapsed.data));
   return {
     snapshot,
     tombstones: nextTombstones,
-    keepsHistory: historyPreserved(omitDemo(local), snapshot, nextTombstones),
+    keepsHistory: historyPreserved(omitSeedHistory(local), snapshot, nextTombstones),
   };
 }

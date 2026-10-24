@@ -661,15 +661,23 @@ function omitDemoLoads(
   loads: GymData["workingLoads"] | undefined,
   seed: GymData,
 ): GymData["workingLoads"] {
-  const examples = new Set(
-    Object.entries(seed.workingLoads).map(
-      ([key, load]) => `${exerciseIdFromLoadKey(key)}|${loadSignature(load)}`,
-    ),
-  );
   return Object.fromEntries(
     Object.entries(loads ?? {}).filter(([key, load]) => {
-      return !examples.has(`${exerciseIdFromLoadKey(key)}|${loadSignature(load)}`);
+      return !isExampleWorkingLoad(exerciseIdFromLoadKey(key), load, seed);
     }),
+  );
+}
+
+/** True when this load is still the example number from the demo template. */
+export function isExampleWorkingLoad(
+  exerciseId: string,
+  load: { weightKg: number; reps: number; repsRight: number | null },
+  seed: GymData = createSeed(),
+): boolean {
+  if (!exerciseId) return false;
+  return Object.entries(seed.workingLoads).some(
+    ([key, example]) =>
+      exerciseIdFromLoadKey(key) === exerciseId && loadSignature(example) === loadSignature(load),
   );
 }
 
@@ -690,6 +698,38 @@ export function omitDemo<T extends Partial<GymData>>(data: T, seed: GymData = cr
     sets: (data.sets ?? []).filter((row) => !droppedStations.has(row.stationId)),
     reactions: (data.reactions ?? []).filter(
       (row) => !drop.has(row.workoutId) && !isUntouchedDemoReaction(data, seed, row.id),
+    ),
+    workingLoads: omitDemoLoads(data.workingLoads, seed),
+  };
+}
+
+/**
+ * Drops every legacy demo id (`w-cr-*`, `w-am-*`, `rx-*`) and example loads.
+ * Edited seed rows are demo too: a real account never receives them.
+ * The phone blob can still keep them on the legacy person; this is the account view.
+ */
+export function omitSeedHistory<T extends Partial<GymData>>(data: T, seed: GymData = createSeed()): T {
+  const dropWorkouts = new Set(
+    (data.workouts ?? []).filter((row) => isLegacySeedId(row.id)).map((row) => row.id),
+  );
+  const droppedBlocks = new Set(
+    (data.blocks ?? [])
+      .filter((row) => dropWorkouts.has(row.workoutId) || isLegacySeedId(row.id))
+      .map((row) => row.id),
+  );
+  const droppedStations = new Set(
+    (data.stations ?? [])
+      .filter((row) => droppedBlocks.has(row.blockId) || isLegacySeedId(row.id))
+      .map((row) => row.id),
+  );
+  return {
+    ...data,
+    workouts: (data.workouts ?? []).filter((row) => !dropWorkouts.has(row.id)),
+    blocks: (data.blocks ?? []).filter((row) => !droppedBlocks.has(row.id)),
+    stations: (data.stations ?? []).filter((row) => !droppedStations.has(row.id)),
+    sets: (data.sets ?? []).filter((row) => !droppedStations.has(row.stationId) && !isLegacySeedId(row.id)),
+    reactions: (data.reactions ?? []).filter(
+      (row) => !dropWorkouts.has(row.workoutId) && !isLegacySeedId(row.id),
     ),
     workingLoads: omitDemoLoads(data.workingLoads, seed),
   };

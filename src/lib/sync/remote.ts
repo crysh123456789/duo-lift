@@ -40,22 +40,29 @@ export async function readOwn(
     rows<RemoteTables["exercises"][number]>(
       client
         .from("exercise_catalog")
-        .select("id, name, muscle_group, equipment, is_unilateral, created_by_user_id, duo_id"),
+        .select("id, name, muscle_group, equipment, is_unilateral, created_by_user_id, duo_id")
+        .is("deleted_at", null),
     ),
     rows<RemoteTables["workouts"][number]>(
       client
         .from("workouts")
         .select("id, user_id, duo_id, started_at, ended_at, status, notes, perceived_exertion, title")
-        .eq("user_id", userId),
+        .eq("user_id", userId)
+        .is("deleted_at", null),
     ),
     rows<RemoteTables["foodDays"][number]>(
       client
         .from("food_days")
         .select("id, user_id, date, meals, comment, raw_input, updated_at")
-        .eq("user_id", userId),
+        .eq("user_id", userId)
+        .is("deleted_at", null),
     ),
     rows<RemoteTables["loads"][number]>(
-      client.from("working_loads").select("user_id, exercise_id, weight_kg, reps, reps_right").eq("user_id", userId),
+      client
+        .from("working_loads")
+        .select("user_id, exercise_id, weight_kg, reps, reps_right")
+        .eq("user_id", userId)
+        .is("deleted_at", null),
     ),
     client.from("user_reminders").select("settings").eq("user_id", userId).maybeSingle(),
     rows<{ entity: string; entity_id: string }>(
@@ -69,11 +76,16 @@ export async function readOwn(
     client
       .from("workout_blocks")
       .select("id, workout_id, position, kind, name, target_rounds, rest_between_rounds_sec, rest_sec")
-      .in("workout_id", ids),
+      .in("workout_id", ids)
+      .is("deleted_at", null),
   );
   const blockIds = blocks.map((row) => row.id);
   const stations = await inChunks<RemoteTables["stations"][number]>(blockIds, (ids) =>
-    client.from("block_stations").select("id, block_id, exercise_id, position, notes").in("block_id", ids),
+    client
+      .from("block_stations")
+      .select("id, block_id, exercise_id, position, notes")
+      .in("block_id", ids)
+      .is("deleted_at", null),
   );
   const stationIds = stations.map((row) => row.id);
   const [sets, reactions] = await Promise.all([
@@ -83,10 +95,15 @@ export async function readOwn(
         .select(
           "id, station_id, round_index, set_index, reps, reps_right, weight_kg, duration_sec, rpe, is_warmup, completed, logged_at",
         )
-        .in("station_id", ids),
+        .in("station_id", ids)
+        .is("deleted_at", null),
     ),
     inChunks<RemoteTables["reactions"][number]>(workoutIds, (ids) =>
-      client.from("reactions").select("id, workout_id, from_user_id, kind, body, created_at").in("workout_id", ids),
+      client
+        .from("reactions")
+        .select("id, workout_id, from_user_id, kind, body, created_at")
+        .in("workout_id", ids)
+        .is("deleted_at", null),
     ),
   ]);
 

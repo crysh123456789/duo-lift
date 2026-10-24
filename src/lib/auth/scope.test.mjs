@@ -5,6 +5,23 @@ import { adoptAccount, attachClaimedHistory, rewriteLegacyOwner, scopeToUser, st
 
 const AUTH_A = "11111111-1111-4111-8111-111111111111";
 
+function withRealHistory(data) {
+  const next = structuredClone(data);
+  next.workouts.push({
+    id: "w-real-1",
+    userId: "user-cristian",
+    duoId: data.duo.id,
+    startedAt: "2026-10-20T18:00:00.000Z",
+    endedAt: "2026-10-20T19:00:00.000Z",
+    status: "completed",
+    notes: null,
+    perceivedExertion: null,
+    title: "Pierna real",
+  });
+  next.workingLoads["user-cristian:ex-real"] = { weightKg: 123, reps: 5, repsRight: null };
+  return next;
+}
+
 describe("per-person gym scope", () => {
   test("scopeToUser hides the other person's rows", () => {
     const seed = createSeed();
@@ -16,35 +33,44 @@ describe("per-person gym scope", () => {
     assert.equal(seed.workouts.some((row) => row.userId === "user-amigo"), true);
   });
 
-  test("rewriteLegacyOwner leaves the other person in place", () => {
-    const next = rewriteLegacyOwner(createSeed(), "user-cristian", AUTH_A);
+  test("rewriteLegacyOwner leaves the other person and the demo rows in place", () => {
+    const next = rewriteLegacyOwner(withRealHistory(createSeed()), "user-cristian", AUTH_A);
     assert.equal(next.users.some((row) => row.id === "user-amigo"), true);
     assert.equal(next.users.some((row) => row.id === "user-cristian"), false);
     assert.equal(next.workouts.some((row) => row.userId === "user-amigo"), true);
-    assert.equal(next.workouts.some((row) => row.userId === AUTH_A), true);
-    assert.equal(next.workouts.some((row) => row.userId === "user-cristian"), false);
+    assert.equal(next.workouts.find((row) => row.id === "w-real-1").userId, AUTH_A);
+    assert.equal(
+      next.workouts.filter((row) => row.id.startsWith("w-cr-")).every((row) => row.userId === "user-cristian"),
+      true,
+    );
+    assert.equal(next.workingLoads[`${AUTH_A}:ex-real`].weightKg, 123);
     assert.equal(
       Object.keys(next.workingLoads).some((key) => key.startsWith("user-cristian:")),
-      false,
+      true,
     );
     assert.equal(
-      Object.keys(next.workingLoads).some((key) => key.startsWith(`${AUTH_A}:`)),
-      true,
+      Object.keys(next.workingLoads).filter((key) => key.startsWith(`${AUTH_A}:`)).join(","),
+      `${AUTH_A}:ex-real`,
     );
   });
 
   test("stitchGym puts the synced slice back without dropping the other history", () => {
-    const full = createSeed();
+    const full = withRealHistory(createSeed());
     const own = scopeToUser(rewriteLegacyOwner(full, "user-cristian", AUTH_A), AUTH_A);
     const stitched = stitchGym(full, own, AUTH_A);
+    assert.equal(own.workouts.some((row) => row.id.startsWith("w-cr-")), false);
     assert.equal(stitched.workouts.some((row) => row.userId === "user-amigo"), true);
-    assert.equal(stitched.workouts.some((row) => row.userId === AUTH_A), true);
+    assert.equal(stitched.workouts.some((row) => row.id === "w-real-1" && row.userId === AUTH_A), true);
+    assert.equal(
+      stitched.workouts.some((row) => row.id.startsWith("w-cr-") && row.userId === "user-cristian"),
+      true,
+    );
     assert.equal(stitched.duo.id, full.duo.id);
   });
 
-  test("claiming Cristian retags only his rows and leaves Kviedes on user-amigo", () => {
+  test("claiming Cristian moves real rows and leaves demo sessions on the legacy account", () => {
     const next = attachClaimedHistory(
-      createSeed(),
+      withRealHistory(createSeed()),
       {
         id: AUTH_A,
         email: "crysh@example.com",
@@ -54,12 +80,16 @@ describe("per-person gym scope", () => {
       },
       "cristian",
     );
-    assert.equal(next.workouts.some((row) => row.userId === "user-cristian"), false);
-    assert.equal(next.workouts.some((row) => row.userId === AUTH_A), true);
+    assert.equal(next.workouts.find((row) => row.id === "w-real-1").userId, AUTH_A);
+    assert.equal(
+      next.workouts.filter((row) => row.id.startsWith("w-cr-")).every((row) => row.userId === "user-cristian"),
+      true,
+    );
     assert.equal(next.workouts.some((row) => row.id.startsWith("w-am-") && row.userId === "user-amigo"), true);
     const own = scopeToUser(next, AUTH_A);
     assert.equal(own.workouts.some((row) => row.id.startsWith("w-am-")), false);
-    assert.equal(own.workouts.some((row) => row.id.startsWith("w-cr-")), true);
+    assert.equal(own.workouts.some((row) => row.id.startsWith("w-cr-")), false);
+    assert.equal(own.workouts.some((row) => row.id === "w-real-1"), true);
   });
 
   test("adoptAccount adds the profile and keeps everyone else", () => {

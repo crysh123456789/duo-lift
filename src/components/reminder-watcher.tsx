@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { dueReminders } from "@/lib/reminders";
-import { omitDemo } from "@/lib/seed";
+import { omitSeedHistory } from "@/lib/seed";
 import { useGymStore } from "@/lib/store";
 
 export function ReminderWatcher() {
@@ -24,7 +24,7 @@ export function ReminderWatcher() {
         reminders: state.reminders,
         userId: state.activeUserId,
         foodDays: state.foodDays ?? [],
-        workouts: omitDemo(state).workouts ?? [],
+        workouts: omitSeedHistory(state).workouts ?? [],
       });
       setBanner(due[0] ?? null);
       if (typeof Notification === "undefined" || Notification.permission !== "granted") return;

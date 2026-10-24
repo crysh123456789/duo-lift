@@ -167,8 +167,9 @@ describe("first upload", () => {
       { preferLocal: true, remindersFromServer: false },
     );
     assert.equal(prepared.tombstones.some((row) => isLegacySeedId(row.id)), false);
-    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-cr-d5"), true);
-    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-am-d1"), true);
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-cr-d5"), false);
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-am-d1"), false);
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-phone"), true);
     assert.equal(prepared.keepsHistory, true);
   });
 

@@ -7,6 +7,7 @@ import {
   isUntouchedDemo,
   mergeGymData,
   omitDemo,
+  omitSeedHistory,
   seedWorkoutWasEdited,
   stripLegacySeed,
 } from "./seed.ts";
@@ -111,5 +112,19 @@ describe("legacy seed cleanup", () => {
     assert.equal(account.exercises.length > 0, true);
     assert.equal(omitDemo(createSeed()).workouts.length, 0);
     assert.deepEqual(omitDemo(createSeed()).workingLoads, {});
+  });
+
+  test("an authenticated view drops seed ids even after the session was edited", () => {
+    const seed = createSeed();
+    const edited = structuredClone(seed);
+    const workout = edited.workouts.find((row) => row.id === "w-cr-d5");
+    workout.title = "Pecho real";
+    workout.updatedAt = "2026-02-02T19:00:00.000Z";
+    workout.userId = "11111111-1111-4111-8111-111111111111";
+    const view = omitSeedHistory(edited, seed);
+    assert.equal(view.workouts.some((row) => row.id === "w-cr-d5"), false);
+    assert.equal(view.workouts.some((row) => row.id.startsWith("w-am-")), false);
+    assert.equal(view.reactions.some((row) => row.id.startsWith("rx-")), false);
+    assert.equal(omitDemo(edited, seed).workouts.some((row) => row.id === "w-cr-d5"), true);
   });
 });

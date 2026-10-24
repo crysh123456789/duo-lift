@@ -7,7 +7,7 @@ import { ackMap, collectTombstones, snapshotsMatch } from "./merge";
 import { parseSnapshot, parseTombstones } from "./payload";
 import { prepareSyncSnapshot, serverKeptWorkouts, tombstonesForRound } from "./round";
 import { getSyncUserId, subscribeSyncUser } from "./session-user";
-import { isDemoTombstone } from "@/lib/seed";
+import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import { snapshotFromState } from "./snapshot";
 import { setSyncPhase } from "./status";
 import {
@@ -55,7 +55,7 @@ function currentSnapshot(): GymData {
 }
 
 function ownSnapshot(userId: string): GymData {
-  return scopeToUser(currentSnapshot(), userId);
+  return scopeToUser(omitSeedHistory(currentSnapshot()), userId);
 }
 
 function applyOwn(own: GymData, userId: string) {

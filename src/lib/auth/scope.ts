@@ -1,5 +1,6 @@
 import { isLegacyKey, legacyUserId } from "@/lib/auth/constants";
 import { loadKey } from "@/lib/loads";
+import { isExampleWorkingLoad, isLegacySeedId } from "@/lib/seed";
 import { canonicalize } from "@/lib/sync/snapshot";
 import type { GymData, User } from "@/lib/types";
 
@@ -120,19 +121,24 @@ export function rewriteLegacyOwner<T extends GymData>(data: T, fromId: string, t
     const splitAt = key.indexOf(":");
     const owner = splitAt > 0 ? key.slice(0, splitAt) : "";
     const exerciseId = splitAt > 0 ? key.slice(splitAt + 1) : "";
-    if (owner === fromId && exerciseId) workingLoads[loadKey(toId, exerciseId)] = value;
-    else workingLoads[key] = value;
+    if (owner === fromId && exerciseId && !isExampleWorkingLoad(exerciseId, value)) {
+      workingLoads[loadKey(toId, exerciseId)] = value;
+    } else workingLoads[key] = value;
   }
 
   return {
     ...data,
     users,
-    workouts: data.workouts.map((row) => (row.userId === fromId ? { ...row, userId: toId } : row)),
+    workouts: data.workouts.map((row) =>
+      row.userId === fromId && !isLegacySeedId(row.id) ? { ...row, userId: toId } : row,
+    ),
     foodDays: (data.foodDays ?? []).map((row) =>
       row.userId === fromId ? { ...row, userId: toId } : row,
     ),
     reactions: data.reactions.map((row) =>
-      row.fromUserId === fromId ? { ...row, fromUserId: toId } : row,
+      row.fromUserId === fromId && !isLegacySeedId(row.id) && !isLegacySeedId(row.workoutId)
+        ? { ...row, fromUserId: toId }
+        : row,
     ),
     members: data.members.map((row) => (row.userId === fromId ? { ...row, userId: toId } : row)),
     exercises: data.exercises.map((row) =>

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { DemoBadge } from "@/components/demo-badge";
 import { UnclosedSessionCard } from "@/components/unclosed-session";
 import { Panel } from "@/components/ui";
 import { PageTitle } from "@/components/page-title";
@@ -14,12 +13,9 @@ import { groupDuoSessions } from "@/lib/session-groups";
 import { DATE_UPDATED, homeTrainCta, staleOpenWorkouts } from "@/lib/session-date";
 import { splitHeadline } from "@/lib/split";
 import { useOwnGym } from "@/lib/auth/use-own-gym";
-import { isUntouchedDemo } from "@/lib/seed";
-import { useGymStore } from "@/lib/store";
 import { workoutVolume } from "@/lib/workout-tree";
 
 export default function DashboardPage() {
-  const raw = useGymStore();
   const data = useOwnGym();
   const [dateNotice, setDateNotice] = useState("");
   const me = data.users.find((u) => u.id === data.activeUserId);
@@ -150,12 +146,9 @@ export default function DashboardPage() {
                       className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface"
                     >
                       <div className="min-w-0">
-                        <p className="flex flex-wrap items-center gap-2 truncate text-sm">
-                          <span className="truncate">
-                            {row.title}
-                            <span className="text-muted"> · juntos</span>
-                          </span>
-                          {row.workouts.some((workout) => isUntouchedDemo(raw, workout.id)) ? <DemoBadge /> : null}
+                        <p className="truncate text-sm">
+                          {row.title}
+                          <span className="text-muted"> · juntos</span>
                         </p>
                         <p className="truncate text-xs text-muted">
                           {whenLabel(row.date)} · {names}
@@ -179,13 +172,10 @@ export default function DashboardPage() {
                     className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface"
                   >
                     <div className="min-w-0">
-                      <p className="flex flex-wrap items-center gap-2 truncate text-sm">
-                        <span className="truncate">
-                          <span className="text-muted">{personName(user)}</span>
-                          {" · "}
-                          {w.title ?? "Entrenamiento"}
-                        </span>
-                        {isUntouchedDemo(raw, w.id) ? <DemoBadge /> : null}
+                      <p className="truncate text-sm">
+                        <span className="text-muted">{personName(user)}</span>
+                        {" · "}
+                        {w.title ?? "Entrenamiento"}
                       </p>
                       <p className="truncate text-xs text-muted">
                         {whenLabel(w.startedAt)} · {sessionSummary(data, w.id)}

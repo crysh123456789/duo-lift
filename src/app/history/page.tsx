@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { DemoBadge } from "@/components/demo-badge";
 import { RecordTabs } from "@/components/record-tabs";
 import { PageTitle } from "@/components/page-title";
 import { formatKg, sessionSummary } from "@/lib/metrics";
@@ -10,12 +9,9 @@ import { unclosedBadge } from "@/lib/session-date";
 import { personName } from "@/lib/people";
 import { groupDuoSessions } from "@/lib/session-groups";
 import { useOwnGym } from "@/lib/auth/use-own-gym";
-import { isUntouchedDemo } from "@/lib/seed";
-import { useGymStore } from "@/lib/store";
 import { workoutVolume } from "@/lib/workout-tree";
 
 export default function HistoryPage() {
-  const raw = useGymStore();
   const data = useOwnGym();
   const open = data.workouts.filter((w) => w.status === "in_progress");
   const filtered = data.workouts.filter((w) => w.status === "completed");
@@ -48,10 +44,7 @@ export default function HistoryPage() {
                   className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface"
                 >
                   <div className="min-w-0">
-                    <p className="flex flex-wrap items-center gap-2 truncate">
-                      <span className="truncate">{w.title ?? "Entrenamiento"}</span>
-                      {isUntouchedDemo(raw, w.id) ? <DemoBadge /> : null}
-                    </p>
+                    <p className="truncate">{w.title ?? "Entrenamiento"}</p>
                     <p className="mt-1 text-xs text-accent">{unclosedBadge(w.startedAt)}</p>
                     <p className="truncate text-xs text-muted">{personName(user)}</p>
                   </div>
@@ -73,12 +66,9 @@ export default function HistoryPage() {
                   className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface"
                 >
                   <div className="min-w-0">
-                    <p className="flex flex-wrap items-center gap-2 truncate">
-                      <span className="truncate">
-                        {w.title ?? "Entrenamiento"}
-                        <span className="text-muted"> · {personName(user)}</span>
-                      </span>
-                      {isUntouchedDemo(raw, w.id) ? <DemoBadge /> : null}
+                    <p className="truncate">
+                      {w.title ?? "Entrenamiento"}
+                      <span className="text-muted"> · {personName(user)}</span>
                     </p>
                     <p className="truncate text-xs text-muted">
                       {whenLabel(w.startedAt)} · {sessionSummary(data, w.id)}

@@ -6,14 +6,14 @@ import {
 } from "date-fns";
 import { es } from "date-fns/locale";
 import { whenLabel } from "./format";
-import { omitDemo } from "./seed";
+import { omitSeedHistory } from "./seed";
 import { shiftStamp, todayStamp } from "./nutrition";
 import { staleOpenWorkout, todayOpenWorkout } from "./session-date";
 import type { GymData } from "./types";
 import { workoutTree, workoutVolume } from "./workout-tree";
 
 export function weeklyVolume(data: GymData, weekCount = 4) {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   const end = new Date();
   const start = startOfWeek(subWeeks(end, weekCount - 1), { weekStartsOn: 1 });
   const weeks = eachWeekOfInterval({ start, end }, { weekStartsOn: 1 });
@@ -57,7 +57,7 @@ function chartUserId(data: GymData, workoutUserId: string): string | null {
 
 /** Every calendar day from the oldest session through today, at least `dayCount` days. */
 export function dailyVolume(data: GymData, dayCount = 14, now = new Date()) {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   const end = todayStamp(now);
   const windowStart = new Date(now);
   windowStart.setHours(12, 0, 0, 0);
@@ -96,7 +96,7 @@ export function dailyVolume(data: GymData, dayCount = 14, now = new Date()) {
 }
 
 export function lastOpenOrCompleted(data: GymData, userId: string, now = new Date()) {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   return (
     todayOpenWorkout(data.workouts, userId, now) ??
     staleOpenWorkout(data.workouts, userId, now) ??
@@ -122,7 +122,7 @@ export function workoutLifts(data: GymData, workoutId: string) {
 }
 
 export function maxWeightHistory(data: GymData, exerciseId: string) {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   const byUser: Record<string, { date: string; kg: number }[]> = {};
   for (const user of data.users) byUser[user.id] = [];
   const completed = data.workouts
@@ -153,7 +153,7 @@ export function maxWeightHistory(data: GymData, exerciseId: string) {
 }
 
 export function bestWeight(data: GymData, userId: string, exerciseId: string): number | null {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   let max: number | null = null;
   for (const workout of data.workouts) {
     if (workout.userId !== userId || workout.status !== "completed") continue;
@@ -171,7 +171,7 @@ export function bestWeight(data: GymData, userId: string, exerciseId: string): n
 }
 
 export function workoutsLastDays(data: GymData, userId: string, days: number, now = new Date()) {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   const cutoff = now.getTime() - days * 86400000;
   return data.workouts.filter(
     (w) => w.userId === userId && w.status === "completed" && new Date(w.startedAt).getTime() >= cutoff,
@@ -198,7 +198,7 @@ function ownedUserIds(data: GymData, userId: string): Set<string> {
 
 /** All completed sessions, plus the rolling week so a weekly figure can be labeled as such. */
 export function personTrainingStats(data: GymData, userId: string, now = new Date()) {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   const ids = ownedUserIds(data, userId);
   const completed = data.workouts.filter((w) => ids.has(w.userId) && w.status === "completed");
   const week = completed.filter((w) => new Date(w.startedAt).getTime() >= now.getTime() - 7 * 86400000);
@@ -212,7 +212,7 @@ export function personTrainingStats(data: GymData, userId: string, now = new Dat
 }
 
 export function lastWorkout(data: GymData, userId: string) {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   const ids = ownedUserIds(data, userId);
   return [...data.workouts]
     .filter((w) => ids.has(w.userId) && w.status === "completed")
@@ -221,12 +221,12 @@ export function lastWorkout(data: GymData, userId: string) {
 
 /** In-progress session dated today. A leftover from another day is not today's workout. */
 export function activeWorkout(data: GymData, userId: string, now = new Date()) {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   return todayOpenWorkout(data.workouts, userId, now);
 }
 
 export function exercisesWithLogs(data: GymData) {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   const ids = new Set<string>();
   for (const station of data.stations) {
     const has = data.sets.some((s) => s.stationId === station.id && s.completed);
@@ -260,7 +260,7 @@ export function lastLoggedSet(
   exerciseId: string,
   beforeIso?: string,
 ): { weightKg: number | null; reps: number | null; repsRight: number | null } | null {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   const completed = data.workouts
     .filter((w) => w.userId === userId && w.status === "completed")
     .filter((w) => !beforeIso || w.startedAt < beforeIso)
@@ -295,7 +295,7 @@ export function isPersonalRecord(
 }
 
 export function lastExerciseDate(data: GymData, userId: string, exerciseId: string): string | null {
-  data = omitDemo(data);
+  data = omitSeedHistory(data);
   let latest: string | null = null;
   for (const workout of data.workouts) {
     if (workout.userId !== userId || workout.status !== "completed") continue;
