@@ -33,6 +33,7 @@ import {
   splitHeadline,
   type SplitDay,
 } from "@/lib/split";
+import { omitSeedHistory } from "@/lib/seed";
 import { useGymStore } from "@/lib/store";
 import { workoutTree, workoutVolume } from "@/lib/workout-tree";
 
@@ -40,7 +41,7 @@ export function WorkoutLogger() {
   const router = useRouter();
   const params = useSearchParams();
   const seguirId = params.get("seguir");
-  const data = useGymStore();
+  const data = omitSeedHistory(useGymStore());
   const startSplitDay = useGymStore((s) => s.startSplitDay);
   const finishWorkout = useGymStore((s) => s.finishWorkout);
   const abandonWorkout = useGymStore((s) => s.abandonWorkout);

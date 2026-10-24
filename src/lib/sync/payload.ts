@@ -1,3 +1,4 @@
+import { KCAL_TARGET_MAX, PROTEIN_TARGET_MAX, clampDailyTarget } from "@/lib/nutrition";
 import type { GymData } from "@/lib/types";
 import { canonicalize, snapshotFromState } from "./snapshot";
 import { isTombstoneEntity, type Tombstone, type TombstoneEntity } from "./types";
@@ -62,6 +63,8 @@ export function toSyncPayload(data: GymData, tombstones: Tombstone[]) {
         height_cm: row.heightCm,
         weight_kg: row.weightKg,
         nutrition_goal: row.nutritionGoal,
+        protein_target_g: clampDailyTarget(row.proteinTargetG, PROTEIN_TARGET_MAX),
+        kcal_target: clampDailyTarget(row.kcalTarget, KCAL_TARGET_MAX),
         created_at: row.createdAt,
       })),
     members: snapshot.members

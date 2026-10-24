@@ -2,14 +2,19 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { dueReminders, DEFAULT_REMINDERS } from "./reminders.ts";
 import {
+  collapseFoodDays,
   dayTotals,
   emptyMeals,
   formatTotals,
   macroKcal,
+  manualProteinGoal,
+  proteinGoalNeedsConfirm,
+  weightProteinSuggestion,
   mealSummary,
   mealTotals,
   normalizeMealEntry,
   normalizeMealLog,
+  nutritionComment,
   parseMealDump,
   proteinTargetG,
   upsertFoodDay,
@@ -107,6 +112,137 @@ describe("day totals", () => {
     assert.equal(meal.proteinG, 0);
     assert.equal(meal.carbsG, 20);
     assert.equal(meal.kcal, 80);
+  });
+});
+
+describe("manual nutrition goals", () => {
+  test("diary uses the manual protein goal and ignores weight", () => {
+    assert.equal(manualProteinGoal({ proteinTargetG: 90, weightKg: 60 }), 90);
+    assert.equal(manualProteinGoal({ weightKg: 60 }), null);
+    assert.equal(manualProteinGoal({ proteinTargetG: 0, weightKg: 60 }), null);
+    assert.equal(proteinTargetG(60), 108);
+    const day = dayTotals(breakfastLog());
+    assert.equal(formatTotals(day, manualProteinGoal({ weightKg: 60 })), "P 28/— · C 51 · G 21 · 505 kcal");
+    assert.equal(formatTotals(day, manualProteinGoal({ proteinTargetG: 90, weightKg: 60 })), "P 28/90 · C 51 · G 21 · 505 kcal");
+
+    const withGoal = nutritionComment({ ...cristian, proteinTargetG: 90 }, breakfastLog());
+    assert.match(withGoal, /90 g/);
+    assert.equal(/108/.test(withGoal), false);
+    const unset = nutritionComment(cristian, breakfastLog());
+    assert.equal(/108/.test(unset), false);
+    const noteOnly = { ...emptyMeals(), desayuno: { time: "08:00", items: [], note: "avena" } };
+    assert.equal(/108/.test(nutritionComment(cristian, noteOnly)), false);
+    assert.match(nutritionComment({ ...cristian, proteinTargetG: 90, kcalTarget: 2200 }, noteOnly), /90 g de proteína y 2200 kcal/);
+  });
+
+  test("weight suggestion fills empty protein and asks before replacing a manual goal", () => {
+    assert.equal(weightProteinSuggestion(60), 108);
+    assert.equal(weightProteinSuggestion(null), null);
+    assert.equal(weightProteinSuggestion(0), null);
+    assert.equal(proteinGoalNeedsConfirm(null, 108), false);
+    assert.equal(proteinGoalNeedsConfirm(108, 108), false);
+    assert.equal(proteinGoalNeedsConfirm(90, 108), true);
+    assert.equal(proteinGoalNeedsConfirm(90, null), false);
+  });
+
+  test("manual targets round-trip through the sync payload", () => {
+    const user = {
+      ...cristian,
+      id: "11111111-1111-4111-8111-111111111111",
+      proteinTargetG: 90,
+      kcalTarget: 2200,
+    };
+    const payload = toSyncPayload(gym({ users: [user] }), []);
+    assert.equal(payload.users[0].protein_target_g, 90);
+    assert.equal(payload.users[0].kcal_target, 2200);
+    const cleared = toSyncPayload(gym({ users: [cristian] }), []);
+    assert.equal(cleared.users[0].protein_target_g, null);
+    assert.equal(cleared.users[0].kcal_target, null);
+    const { data } = gymFromRows({
+      duo: { id: "duo-1", name: "Duo Lift", invite_code: "GYM2", created_at: "2026-01-01T00:00:00.000Z" },
+      users: [
+        {
+          id: user.id,
+          email: user.email,
+          display_name: user.displayName,
+          avatar_hue: 78,
+          unit_system: "kg",
+          height_cm: "167",
+          weight_kg: "60",
+          nutrition_goal: "surplus_muscle",
+          protein_target_g: "90",
+          kcal_target: "2200",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      members: [],
+      exercises: [],
+      workouts: [],
+      blocks: [],
+      stations: [],
+      sets: [],
+      reactions: [],
+      foodDays: [],
+      loads: [],
+      reminders: null,
+    });
+    assert.equal(data.users[0].proteinTargetG, 90);
+    assert.equal(data.users[0].kcalTarget, 2200);
+  });
+});
+
+describe("duplicate food days", () => {
+  test("keeps non-empty slots and lets the newer item win", () => {
+    const older = {
+      id: "food-old",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: {
+        desayuno: {
+          time: "08:00",
+          note: "casero",
+          items: [
+            { id: "huevo", name: "Huevo", grams: 50, proteinG: 6, carbsG: 0, fatG: 5 },
+            { id: "avena", name: "Avena", grams: 40, proteinG: 5, carbsG: 27, fatG: 3 },
+          ],
+        },
+        cena: { time: "20:00", note: "", items: [{ id: "atun", name: "Atún", grams: 80, proteinG: 20, carbsG: 0, fatG: 1 }] },
+      },
+      comment: "mañana",
+      rawInput: null,
+      updatedAt: "2026-10-20T10:00:00.000Z",
+    };
+    const newer = {
+      id: "food-new",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: {
+        desayuno: {
+          time: "08:30",
+          note: "",
+          items: [{ id: "huevo", name: "Huevo revuelto", grams: 60, proteinG: 8, carbsG: 1, fatG: 6 }],
+        },
+        almuerzo: {
+          time: "13:00",
+          note: "",
+          items: [{ id: "pollo", name: "Pollo", grams: 150, proteinG: 40, carbsG: 0, fatG: 5 }],
+        },
+      },
+      comment: "",
+      rawInput: null,
+      updatedAt: "2026-10-20T18:00:00.000Z",
+    };
+    const [day] = collapseFoodDays([newer, older]);
+    assert.equal(day.id, "food-new");
+    assert.deepEqual(
+      day.meals.desayuno.items.map((item) => item.name),
+      ["Huevo revuelto", "Avena"],
+    );
+    assert.equal(day.meals.desayuno.time, "08:30");
+    assert.equal(day.meals.desayuno.note, "casero");
+    assert.equal(day.meals.almuerzo.items[0].name, "Pollo");
+    assert.equal(day.meals.cena.items[0].name, "Atún");
+    assert.equal(day.comment, "mañana");
   });
 });
 

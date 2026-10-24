@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PageTitle } from "@/components/page-title";
 import { Button, Panel } from "@/components/ui";
-import { LEGACY_HISTORIES, isLegacyKey, legacyUserId, type HistoryChoice } from "@/lib/auth/constants";
+import { LEGACY_HISTORIES, type HistoryChoice } from "@/lib/auth/constants";
 import { claimErrorMessage } from "@/lib/auth/errors";
 import { applyAccountLocally, type AuthLike } from "@/lib/auth/enter";
 import { bumpAuthEpoch, setAuthPhase } from "@/lib/auth/phase";
 import { profileFromAuthUser } from "@/lib/auth/profile";
-import { adoptAccount, rewriteLegacyOwner } from "@/lib/auth/scope";
+import { attachClaimedHistory } from "@/lib/auth/scope";
 import { useGymStore } from "@/lib/store";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { snapshotFromState } from "@/lib/sync/snapshot";
@@ -67,10 +67,7 @@ export default function ClaimPage() {
     }
     const profile = profileFromAuthUser(user);
     const base = snapshotFromState(useGymStore.getState());
-    const next =
-      pending === "clean" || !isLegacyKey(pending)
-        ? adoptAccount(base, profile)
-        : adoptAccount(rewriteLegacyOwner(base, legacyUserId(pending), user.id), profile);
+    const next = attachClaimedHistory(base, profile, pending === "clean" ? null : pending);
     applyAccountLocally(profile, next);
     setAuthPhase("in");
     setBusy(false);

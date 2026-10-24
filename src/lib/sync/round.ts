@@ -1,9 +1,20 @@
+import { collapseFoodDays } from "@/lib/nutrition";
+import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import type { GymData } from "@/lib/types";
 import { mergeRemoteSnapshot } from "./merge";
 import { canonicalize } from "./snapshot";
 import type { Tombstone } from "./types";
 
-const HISTORY = ["workouts", "blocks", "stations", "sets"] as const;
+const HISTORY = ["workouts", "blocks", "stations", "sets", "foodDays"] as const;
+
+function forwardsTombstone(localData: GymData, row: Tombstone, ack: Record<string, string>): boolean {
+  if (isDemoTombstone(row, localData)) return false;
+  if (!(HISTORY as readonly string[]).includes(row.entity)) return true;
+  const rows = localData[row.entity as (typeof HISTORY)[number]];
+  const exists = rows.some((item) => item.id === row.id);
+  if (!exists) return true;
+  return Boolean(ack[`${row.entity}:${row.id}`]);
+}
 
 export function dedupeTombstones(rows: Tombstone[]): Tombstone[] {
   const map = new Map<string, Tombstone>();
@@ -24,22 +35,24 @@ export function tombstonesForRound(
   ack: Record<string, string>,
 ): Tombstone[] {
   const combined = dedupeTombstones(migrated ? [...remoteStones, ...localStones] : localStones);
-  return combined.filter((row) => {
-    if (!(HISTORY as readonly string[]).includes(row.entity)) return true;
-    const rows = localData[row.entity as (typeof HISTORY)[number]];
-    const exists = rows.some((item) => item.id === row.id);
-    if (!exists) return true;
-    return Boolean(ack[`${row.entity}:${row.id}`]);
-  });
+  return combined.filter((row) => forwardsTombstone(localData, row, ack));
 }
 
 /** True when every local history row is still present, or this phone deleted it. */
 export function historyPreserved(before: GymData, after: GymData, tombstones: Tombstone[]): boolean {
   for (const entity of HISTORY) {
     const dropped = new Set(tombstones.filter((row) => row.entity === entity).map((row) => row.id));
-    const afterIds = new Set(after[entity].map((row) => row.id));
-    for (const row of before[entity]) {
-      if (!dropped.has(row.id) && !afterIds.has(row.id)) return false;
+    const afterIds = new Set((after[entity] ?? []).map((row) => row.id));
+    for (const row of before[entity] ?? []) {
+      if (dropped.has(row.id) || afterIds.has(row.id)) continue;
+      if (entity === "foodDays") {
+        const day = row as GymData["foodDays"][number];
+        const absorbed = (after.foodDays ?? []).some(
+          (other) => other.userId === day.userId && other.date === day.date,
+        );
+        if (absorbed) continue;
+      }
+      return false;
     }
   }
   return true;
@@ -81,6 +94,11 @@ export function collapseDuplicateSets(data: GymData): { data: GymData; tombstone
   return { data: { ...data, sets }, tombstones };
 }
 
+/** One live row per person and date. The absorbed id is not a tombstone. */
+export function collapseDuplicateFoodDays(data: GymData): { data: GymData; tombstones: Tombstone[] } {
+  return { data: { ...data, foodDays: collapseFoodDays(data.foodDays ?? []) }, tombstones: [] };
+}
+
 type PrepareOptions = {
   ack?: Record<string, string>;
   remindersFromServer?: boolean;
@@ -97,13 +115,20 @@ export function prepareSyncSnapshot(
   tombstones: Tombstone[],
   options?: PrepareOptions,
 ): { snapshot: GymData; tombstones: Tombstone[]; keepsHistory: boolean } {
-  const merged = mergeRemoteSnapshot(local, remote, tombstones, options);
-  const collapsed = collapseDuplicateSets(merged);
-  const nextTombstones = dedupeTombstones([...tombstones, ...collapsed.tombstones]);
-  const snapshot = canonicalize(collapsed.data);
+  const ack = options?.ack ?? {};
+  const safeTombstones = tombstones.filter((row) => forwardsTombstone(local, row, ack));
+  const merged = mergeRemoteSnapshot(local, remote, safeTombstones, options);
+  const collapsedSets = collapseDuplicateSets(merged);
+  const collapsed = collapseDuplicateFoodDays(collapsedSets.data);
+  const nextTombstones = dedupeTombstones([
+    ...safeTombstones,
+    ...collapsedSets.tombstones,
+    ...collapsed.tombstones,
+  ]).filter((row) => !isDemoTombstone(row, local));
+  const snapshot = canonicalize(omitSeedHistory(collapsed.data));
   return {
     snapshot,
     tombstones: nextTombstones,
-    keepsHistory: historyPreserved(local, snapshot, nextTombstones),
+    keepsHistory: historyPreserved(omitSeedHistory(local), snapshot, nextTombstones),
   };
 }

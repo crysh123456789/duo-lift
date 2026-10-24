@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { createSeed, isLegacySeedId } from "../seed.ts";
 import {
   historyPreserved,
   missingWorkoutIds,
@@ -133,5 +134,143 @@ describe("first upload", () => {
       true,
     );
     assert.equal(serverKeptWorkouts(sent, null, []), false);
+  });
+
+  test("never emits tombstones for w-cr, w-am, or rx seed ids", () => {
+    const local = gym({
+      workouts: [workout("w-cr-d5"), workout("w-am-d1"), workout("w-phone")],
+    });
+    const stones = tombstonesForRound(
+      true,
+      local,
+      [
+        { entity: "workouts", id: "w-cr-d5" },
+        { entity: "sets", id: "w-cr-d5-b1-s1-1" },
+        { entity: "sets", id: "set-user" },
+      ],
+      [
+        { entity: "workouts", id: "w-am-d1" },
+        { entity: "reactions", id: "rx-am-d1-fire" },
+      ],
+      {},
+    );
+    assert.deepEqual(stones, [{ entity: "sets", id: "set-user" }]);
+    const prepared = prepareSyncSnapshot(
+      local,
+      gym(),
+      [
+        { entity: "workouts", id: "w-cr-d5" },
+        { entity: "workouts", id: "w-am-d1" },
+        { entity: "reactions", id: "rx-am-d1-fire" },
+        { entity: "sets", id: "set-user" },
+      ],
+      { preferLocal: true, remindersFromServer: false },
+    );
+    assert.equal(prepared.tombstones.some((row) => isLegacySeedId(row.id)), false);
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-cr-d5"), false);
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-am-d1"), false);
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-phone"), true);
+    assert.equal(prepared.keepsHistory, true);
+  });
+
+  test("does not upload a food day tombstone while that day is still on the phone", () => {
+    const day = {
+      id: "food-1",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: {},
+      comment: "",
+      rawInput: null,
+      updatedAt: "2026-10-20T12:00:00.000Z",
+    };
+    const local = gym({ foodDays: [day] });
+    const stones = tombstonesForRound(true, local, [{ entity: "foodDays", id: "food-1" }], [], {});
+    assert.equal(stones.length, 0);
+    const prepared = prepareSyncSnapshot(local, gym(), [{ entity: "foodDays", id: "food-1" }], {
+      preferLocal: true,
+      remindersFromServer: false,
+    });
+    assert.equal(prepared.tombstones.some((row) => row.entity === "foodDays"), false);
+    assert.equal(prepared.snapshot.foodDays.some((row) => row.id === "food-1"), true);
+    assert.equal(prepared.keepsHistory, true);
+  });
+
+  test("merges a duplicate food day per slot and does not tombstone the absorbed id", () => {
+    const older = {
+      id: "food-old",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: {
+        desayuno: {
+          time: "08:00",
+          note: "",
+          items: [{ id: "huevo", name: "Huevo", grams: 50, proteinG: 6, carbsG: 0, fatG: 5 }],
+        },
+      },
+      comment: "desayuno",
+      rawInput: null,
+      updatedAt: "2026-10-20T10:00:00.000Z",
+    };
+    const newer = {
+      ...older,
+      id: "food-new",
+      meals: {
+        almuerzo: {
+          time: "13:00",
+          note: "",
+          items: [{ id: "pollo", name: "Pollo", grams: 150, proteinG: 40, carbsG: 0, fatG: 5 }],
+        },
+      },
+      comment: "",
+      updatedAt: "2026-10-20T12:00:00.000Z",
+    };
+    const prepared = prepareSyncSnapshot(gym({ foodDays: [older, newer] }), null, [], { preferLocal: true });
+    assert.deepEqual(
+      prepared.snapshot.foodDays.map((row) => row.id),
+      ["food-new"],
+    );
+    assert.equal(prepared.tombstones.some((row) => row.entity === "foodDays"), false);
+    assert.equal(prepared.snapshot.foodDays[0].meals.desayuno.items[0].name, "Huevo");
+    assert.equal(prepared.snapshot.foodDays[0].meals.almuerzo.items[0].name, "Pollo");
+    assert.equal(prepared.snapshot.foodDays[0].comment, "desayuno");
+    assert.equal(prepared.keepsHistory, true);
+    assert.equal(
+      historyPreserved(gym({ foodDays: [older, newer] }), prepared.snapshot, prepared.tombstones),
+      true,
+    );
+  });
+
+  test("refuses a snapshot that drops a food day without a tombstone", () => {
+    const day = {
+      id: "food-1",
+      userId: "user-cristian",
+      date: "2026-10-20",
+      meals: {},
+      comment: "",
+      rawInput: null,
+      updatedAt: "2026-10-20T12:00:00.000Z",
+    };
+    assert.equal(historyPreserved(gym({ foodDays: [day] }), gym(), []), false);
+    assert.equal(historyPreserved(gym({ foodDays: [day] }), gym(), [{ entity: "foodDays", id: "food-1" }]), true);
+  });
+
+  test("untouched demo stays out of the upload and does not become a delete", () => {
+    const local = createSeed();
+    const prepared = prepareSyncSnapshot(
+      local,
+      null,
+      [
+        { entity: "workouts", id: "w-cr-d5" },
+        { entity: "workouts", id: "w-am-d1" },
+        { entity: "reactions", id: "rx-am-d1-fire" },
+      ],
+      { preferLocal: true, remindersFromServer: false },
+    );
+    assert.equal(prepared.snapshot.workouts.length, 0);
+    assert.equal(prepared.snapshot.sets.length, 0);
+    assert.equal(prepared.snapshot.reactions.length, 0);
+    assert.equal(Object.keys(prepared.snapshot.workingLoads).length, 0);
+    assert.equal(prepared.tombstones.some((row) => isLegacySeedId(row.id)), false);
+    assert.equal(prepared.keepsHistory, true);
   });
 });

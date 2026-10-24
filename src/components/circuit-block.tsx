@@ -6,6 +6,7 @@ import { formatSet } from "@/lib/workout-tree";
 import { formatLoad } from "@/lib/copy";
 import { getWorkingLoad } from "@/lib/loads";
 import { lastLoggedSet } from "@/lib/metrics";
+import { omitSeedHistory } from "@/lib/seed";
 import { useGymStore } from "@/lib/store";
 import { Button, NumberField } from "./ui";
 
@@ -26,7 +27,7 @@ export function CircuitBlock({
   block: BlockNode;
   onLogged?: () => void;
 }) {
-  const data = useGymStore();
+  const data = omitSeedHistory(useGymStore());
   const updateSet = useGymStore((s) => s.updateSet);
   const toggleSetComplete = useGymStore((s) => s.toggleSetComplete);
   const bumpStationWeight = useGymStore((s) => s.bumpStationWeight);

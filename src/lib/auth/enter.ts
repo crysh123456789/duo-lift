@@ -7,7 +7,7 @@ import { setSyncStorageUser } from "@/lib/sync/storage";
 import type { GymData } from "@/lib/types";
 import { isAuthUserId } from "./constants";
 import { profileFromAuthUser } from "./profile";
-import { adoptAccount, type AccountProfile } from "./scope";
+import { attachClaimedHistory, type AccountProfile } from "./scope";
 
 export type AuthLike = {
   id: string;
@@ -64,6 +64,9 @@ export async function settleSignedInUser(supabase: StatusClient, user: AuthLike)
     if (declined.error) throw new Error(declined.error.message);
   }
   const profile = profileFromAuthUser(user);
-  applyAccountLocally(profile, adoptAccount(snapshotFromState(useGymStore.getState()), profile));
+  applyAccountLocally(
+    profile,
+    attachClaimedHistory(snapshotFromState(useGymStore.getState()), profile, decision),
+  );
   return "in";
 }

@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { IDS, nid } from "./ids";
 import { bumpKg, getWorkingLoad, loadKey } from "./loads";
-import { createSeed, mergeGymData, stripLegacySeed } from "./seed";
+import { createAccountSeed, createSeed, mergeGymData, omitDemo, seedWorkoutWasEdited, stripLegacySeed } from "./seed";
 import { duoUnlocked } from "./session-flag";
 import { inferSplitDay, splitDayByTitle, SPLIT, type SplitDay } from "./split";
 import type {
@@ -17,7 +17,7 @@ import type {
   SetLog,
   User,
 } from "./types";
-import { todayStamp, upsertFoodDay } from "./nutrition";
+import { KCAL_TARGET_MAX, PROTEIN_TARGET_MAX, clampDailyTarget, todayStamp, upsertFoodDay } from "./nutrition";
 import {
   atLocalStamp,
   isValidStamp,
@@ -39,7 +39,9 @@ type GymStore = GymData & {
   switchUser: (userId: string) => void;
   updateUser: (
     userId: string,
-    patch: Partial<Pick<User, "displayName" | "unitSystem" | "heightCm" | "weightKg" | "nutritionGoal">>,
+    patch: Partial<
+      Pick<User, "displayName" | "unitSystem" | "heightCm" | "weightKg" | "nutritionGoal" | "proteinTargetG" | "kcalTarget">
+    >,
   ) => void;
   startWorkout: (opts?: { date?: string }) => string;
   startSplitDay: (dayId?: SplitDay["id"], opts?: { date?: string }) => string;
@@ -90,14 +92,20 @@ function emptySet(stationId: string, roundIndex: number, setIndex: number): SetL
 export const useGymStore = create<GymStore>()(
   persist(
     (set, get) => ({
-      ...createSeed(),
+      ...createAccountSeed(),
       activeUserId: IDS.cristian,
 
       switchUser: (userId) => set({ activeUserId: userId }),
 
       updateUser: (userId, patch) =>
         set((state) => ({
-          users: state.users.map((u) => (u.id === userId ? { ...u, ...patch } : u)),
+          users: state.users.map((u) => {
+            if (u.id !== userId) return u;
+            const next = { ...u, ...patch };
+            if ("proteinTargetG" in patch) next.proteinTargetG = clampDailyTarget(patch.proteinTargetG, PROTEIN_TARGET_MAX);
+            if ("kcalTarget" in patch) next.kcalTarget = clampDailyTarget(patch.kcalTarget, KCAL_TARGET_MAX);
+            return next;
+          }),
         })),
 
       startWorkout: (opts) => {
@@ -573,7 +581,16 @@ export const useGymStore = create<GymStore>()(
       migrate: (persistedState, fromVersion) => {
         const persisted = (persistedState ?? {}) as Partial<GymStore>;
         const cleaned = fromVersion < 6 ? stripLegacySeed(persisted) : persisted;
-        const merged = mergeGymData(cleaned, createSeed(), { preferSeedLoads: fromVersion < 6 });
+        const merged = mergeGymData(cleaned, createAccountSeed(), { preferSeedLoads: fromVersion < 6 });
+        if (fromVersion < 6) {
+          const dropped = stripLegacySeed(merged);
+          merged.workouts = dropped.workouts ?? [];
+          merged.blocks = dropped.blocks ?? [];
+          merged.stations = dropped.stations ?? [];
+          merged.sets = dropped.sets ?? [];
+          merged.reactions = dropped.reactions ?? [];
+          merged.foodDays = dropped.foodDays ?? merged.foodDays ?? [];
+        }
         if (fromVersion < 7) {
           const seed = createSeed();
           merged.users = merged.users.map((user) => {
@@ -583,19 +600,21 @@ export const useGymStore = create<GymStore>()(
           });
           merged.workouts = merged.workouts.map((w) => {
             const fromSeed = seed.workouts.find((s) => s.id === w.id);
-            return fromSeed ? { ...w, notes: fromSeed.notes } : w;
+            if (!fromSeed || seedWorkoutWasEdited(merged, w.id, seed)) return w;
+            return { ...w, notes: fromSeed.notes };
           });
           merged.duo = { ...merged.duo, name: seed.duo.name };
         }
+        const real = omitDemo(merged);
         return {
           ...cleaned,
-          ...merged,
+          ...real,
           activeUserId: (cleaned as Partial<GymStore>).activeUserId ?? IDS.cristian,
         };
       },
       merge: (persistedState, currentState) => {
         const persisted = (persistedState ?? {}) as Partial<GymStore>;
-        const data = mergeGymData(persisted, createSeed());
+        const data = omitDemo(mergeGymData(persisted, createAccountSeed()));
         return {
           ...currentState,
           ...persisted,

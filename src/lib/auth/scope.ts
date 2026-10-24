@@ -1,4 +1,6 @@
+import { isLegacyKey, legacyUserId } from "@/lib/auth/constants";
 import { loadKey } from "@/lib/loads";
+import { isExampleWorkingLoad, isLegacySeedId } from "@/lib/seed";
 import { canonicalize } from "@/lib/sync/snapshot";
 import type { GymData, User } from "@/lib/types";
 
@@ -104,6 +106,8 @@ export function rewriteLegacyOwner<T extends GymData>(data: T, fromId: string, t
               heightCm: row.heightCm ?? from.heightCm,
               weightKg: row.weightKg ?? from.weightKg,
               nutritionGoal: row.nutritionGoal ?? from.nutritionGoal,
+              proteinTargetG: row.proteinTargetG ?? from.proteinTargetG ?? null,
+              kcalTarget: row.kcalTarget ?? from.kcalTarget ?? null,
               unitSystem: row.unitSystem || from.unitSystem,
             }
           : row,
@@ -119,19 +123,24 @@ export function rewriteLegacyOwner<T extends GymData>(data: T, fromId: string, t
     const splitAt = key.indexOf(":");
     const owner = splitAt > 0 ? key.slice(0, splitAt) : "";
     const exerciseId = splitAt > 0 ? key.slice(splitAt + 1) : "";
-    if (owner === fromId && exerciseId) workingLoads[loadKey(toId, exerciseId)] = value;
-    else workingLoads[key] = value;
+    if (owner === fromId && exerciseId && !isExampleWorkingLoad(exerciseId, value)) {
+      workingLoads[loadKey(toId, exerciseId)] = value;
+    } else workingLoads[key] = value;
   }
 
   return {
     ...data,
     users,
-    workouts: data.workouts.map((row) => (row.userId === fromId ? { ...row, userId: toId } : row)),
+    workouts: data.workouts.map((row) =>
+      row.userId === fromId && !isLegacySeedId(row.id) ? { ...row, userId: toId } : row,
+    ),
     foodDays: (data.foodDays ?? []).map((row) =>
       row.userId === fromId ? { ...row, userId: toId } : row,
     ),
     reactions: data.reactions.map((row) =>
-      row.fromUserId === fromId ? { ...row, fromUserId: toId } : row,
+      row.fromUserId === fromId && !isLegacySeedId(row.id) && !isLegacySeedId(row.workoutId)
+        ? { ...row, fromUserId: toId }
+        : row,
     ),
     members: data.members.map((row) => (row.userId === fromId ? { ...row, userId: toId } : row)),
     exercises: data.exercises.map((row) =>
@@ -139,6 +148,21 @@ export function rewriteLegacyOwner<T extends GymData>(data: T, fromId: string, t
     ),
     workingLoads,
   };
+}
+
+/**
+ * Adopts the auth profile and, when this account already claimed a legacy
+ * history, retags that person's rows. The other legacy person stays put.
+ * `clean` and a missing decision do not move anyone.
+ */
+export function attachClaimedHistory<T extends GymData>(
+  data: T,
+  profile: AccountProfile,
+  decision: string | null,
+): T {
+  const adopted = adoptAccount(data, profile);
+  if (!decision || !isLegacyKey(decision)) return adopted;
+  return rewriteLegacyOwner(adopted, legacyUserId(decision), profile.id);
 }
 
 /** Ensures the signed-in profile exists locally. Does not delete anyone else's rows. */
@@ -167,6 +191,8 @@ export function adoptAccount<T extends GymData>(data: T, profile: AccountProfile
           heightCm: profile.heightCm,
           weightKg: profile.weightKg,
           nutritionGoal: "surplus_muscle" as const,
+          proteinTargetG: null,
+          kcalTarget: null,
           createdAt: new Date().toISOString(),
         },
       ];

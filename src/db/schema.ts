@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   index,
   integer,
@@ -13,8 +15,9 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * Postgres schema aligned with supabase/migrations/0001_init.sql
- * and 0002_duo_local_sync.sql.
+ * Postgres schema aligned with supabase/migrations/0001_init.sql,
+ * 0002_duo_local_sync.sql, 0008_soft_delete.sql, 0009_nutrition_targets.sql,
+ * 0010_food_day_merge.sql, and 0011_food_day_history_rls.sql.
  * Identifiers are text because the Zustand store uses slugs (`user-cristian`,
  * `ex-banca`) and uuid strings from `nid()`, not auth.users ids.
  */
@@ -27,6 +30,8 @@ export const users = pgTable("users", {
   heightCm: numeric("height_cm"),
   weightKg: numeric("weight_kg"),
   nutritionGoal: text("nutrition_goal"),
+  proteinTargetG: integer("protein_target_g"),
+  kcalTarget: integer("kcal_target"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -63,6 +68,7 @@ export const exerciseCatalog = pgTable(
     createdByUserId: text("created_by_user_id").references(() => users.id),
     duoId: text("duo_id").references(() => duos.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [index("exercise_catalog_duo_idx").on(t.duoId)],
 );
@@ -83,6 +89,7 @@ export const workouts = pgTable(
     notes: text("notes"),
     perceivedExertion: smallint("perceived_exertion"),
     title: text("title"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
     index("workouts_duo_started_idx").on(t.duoId, t.startedAt),
@@ -103,6 +110,7 @@ export const workoutBlocks = pgTable(
     targetRounds: integer("target_rounds").notNull().default(1),
     restBetweenRoundsSec: integer("rest_between_rounds_sec"),
     restSec: integer("rest_sec"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [index("workout_blocks_workout_idx").on(t.workoutId, t.position)],
 );
@@ -119,6 +127,7 @@ export const blockStations = pgTable(
       .references(() => exerciseCatalog.id),
     position: integer("position").notNull(),
     notes: text("notes"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [index("block_stations_block_idx").on(t.blockId, t.position)],
 );
@@ -140,9 +149,12 @@ export const setLogs = pgTable(
     isWarmup: boolean("is_warmup").notNull().default(false),
     completed: boolean("completed").notNull().default(false),
     loggedAt: timestamp("logged_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("set_logs_station_round_set_uidx").on(t.stationId, t.roundIndex, t.setIndex),
+    uniqueIndex("set_logs_station_round_set_live_uidx")
+      .on(t.stationId, t.roundIndex, t.setIndex)
+      .where(sql`${t.deletedAt} is null`),
   ],
 );
 
@@ -176,6 +188,7 @@ export const reactions = pgTable("reactions", {
   kind: text("kind").notNull(),
   body: text("body"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const foodDays = pgTable(
@@ -194,10 +207,36 @@ export const foodDays = pgTable(
     comment: text("comment").notNull().default(""),
     rawInput: text("raw_input"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("food_days_user_date_uidx").on(t.userId, t.date),
+    uniqueIndex("food_days_user_date_live_uidx")
+      .on(t.userId, t.date)
+      .where(sql`${t.deletedAt} is null`),
     index("food_days_duo_idx").on(t.duoId, t.date),
+  ],
+);
+
+/** Previous food_days row, written by trigger before update or delete. */
+export const foodDayHistory = pgTable(
+  "food_days_history",
+  {
+    historyId: bigint("history_id", { mode: "number" }).generatedAlwaysAsIdentity().primaryKey(),
+    foodDayId: text("food_day_id").notNull(),
+    userId: text("user_id").notNull(),
+    duoId: text("duo_id").notNull(),
+    date: text("date").notNull(),
+    meals: jsonb("meals").notNull(),
+    comment: text("comment").notNull().default(""),
+    rawInput: text("raw_input"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    operation: text("operation").notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("food_days_history_user_date_idx").on(t.userId, t.date, t.recordedAt),
+    index("food_days_history_food_day_idx").on(t.foodDayId, t.recordedAt),
   ],
 );
 
@@ -214,6 +253,7 @@ export const workingLoads = pgTable(
     reps: integer("reps").notNull(),
     repsRight: integer("reps_right"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [primaryKey({ columns: [t.userId, t.exerciseId] })],
 );

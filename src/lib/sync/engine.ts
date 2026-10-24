@@ -7,6 +7,7 @@ import { ackMap, collectTombstones, snapshotsMatch } from "./merge";
 import { parseSnapshot, parseTombstones } from "./payload";
 import { prepareSyncSnapshot, serverKeptWorkouts, tombstonesForRound } from "./round";
 import { getSyncUserId, subscribeSyncUser } from "./session-user";
+import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import { snapshotFromState } from "./snapshot";
 import { setSyncPhase } from "./status";
 import {
@@ -34,13 +35,27 @@ type SyncResponse = {
 let applying = false;
 let stopCurrent: (() => void) | null = null;
 let requestCycle: (() => void) | null = null;
+let syncEpoch = 0;
+
+const ROUND_MS = 20_000;
+
+function roundSignal(parent: AbortSignal): AbortSignal {
+  const Timeout = AbortSignal as typeof AbortSignal & {
+    timeout?: (ms: number) => AbortSignal;
+    any?: (signals: AbortSignal[]) => AbortSignal;
+  };
+  if (typeof Timeout.timeout === "function" && typeof Timeout.any === "function") {
+    return Timeout.any([parent, Timeout.timeout(ROUND_MS)]);
+  }
+  return parent;
+}
 
 function currentSnapshot(): GymData {
   return snapshotFromState(useGymStore.getState());
 }
 
 function ownSnapshot(userId: string): GymData {
-  return scopeToUser(currentSnapshot(), userId);
+  return scopeToUser(omitSeedHistory(currentSnapshot()), userId);
 }
 
 function applyOwn(own: GymData, userId: string) {
@@ -97,6 +112,7 @@ export function retryGymSync() {
  */
 export function startGymSync() {
   stopCurrent?.();
+  const epoch = ++syncEpoch;
   const controller = new AbortController();
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -113,24 +129,32 @@ export function startGymSync() {
   };
 
   const cycle = async () => {
-    if (stopped) return;
+    if (stopped || epoch !== syncEpoch) return;
     if (running) {
       queued = true;
       return;
     }
     running = true;
+    let open = false;
+    const settle = (next: Parameters<typeof setSyncPhase>[0]) => {
+      open = false;
+      setSyncPhase(next);
+    };
     try {
+      if (stopped || epoch !== syncEpoch) return;
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        setSyncPhase("offline");
+        settle("offline");
         return;
       }
       const userId = getSyncUserId();
       if (!userId) {
-        setSyncPhase("local");
+        settle("local");
         return;
       }
       setSyncStorageUser(userId);
       setSyncPhase("syncing");
+      open = true;
+      const signal = roundSignal(controller.signal);
       const started = ownSnapshot(userId);
       const ownedIds = new Set<string>([
         ...started.workouts.map((row) => row.id),
@@ -140,11 +164,13 @@ export function startGymSync() {
         ...started.foodDays.map((row) => row.id),
         ...Object.keys(started.workingLoads),
       ]);
+      const queuedSeed = readTombstones().filter((row) => isDemoTombstone(row, started));
+      if (queuedSeed.length > 0) removeTombstones(queuedSeed);
       seedLegacyTombstones(userId, ownedIds);
-      const remoteBody = await pull(controller.signal);
-      if (stopped) return;
+      const remoteBody = await pull(signal);
+      if (stopped || epoch !== syncEpoch) return;
       if (!remoteBody.enabled) {
-        setSyncPhase("local");
+        settle("local");
         return;
       }
       const parsed = remoteBody.data ? parseSnapshot(remoteBody.data) : null;
@@ -166,7 +192,7 @@ export function startGymSync() {
       );
       if (!prepared.keepsHistory) {
         logSync("refused an upload that would drop phone history");
-        setSyncPhase("error");
+        settle("error");
         return;
       }
       const ignoreReminders = !remindersFromServer;
@@ -177,12 +203,12 @@ export function startGymSync() {
         pendingDeletes.length > 0 ||
         !snapshotsMatch(prepared.snapshot, remote, ignoreReminders);
       if (needsPush) {
-        const pushed = await push(prepared.snapshot, prepared.tombstones, controller.signal);
-        if (stopped) return;
+        const pushed = await push(prepared.snapshot, prepared.tombstones, signal);
+        if (stopped || epoch !== syncEpoch) return;
         const returned = pushed.data ? parseSnapshot(pushed.data) : null;
         if (!serverKeptWorkouts(prepared.snapshot, returned, prepared.tombstones)) {
           logSync("server ack did not include the phone workouts");
-          setSyncPhase("error");
+          settle("error");
           return;
         }
         removeTombstones(prepared.tombstones);
@@ -194,7 +220,7 @@ export function startGymSync() {
         : prepareSyncSnapshot(latest, remote, latestStones, options);
       if (!followUp.keepsHistory) {
         logSync("refused to replace phone history after ack");
-        setSyncPhase("error");
+        settle("error");
         return;
       }
       if (!snapshotsMatch(followUp.snapshot, latest, ignoreReminders)) {
@@ -203,22 +229,27 @@ export function startGymSync() {
       writeAck(ackMap(prepared.snapshot));
       if (!readSyncMeta().migratedAt) writeSyncMeta({ migratedAt: new Date().toISOString() });
       baseline = ownSnapshot(userId);
-      setSyncPhase("saved");
+      settle("saved");
     } catch (error) {
-      if (stopped || (error instanceof DOMException && error.name === "AbortError")) return;
+      if (stopped || epoch !== syncEpoch) return;
+      if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) {
+        settle("error");
+        return;
+      }
       if (error instanceof Error && error.name === "Unauthorized") {
-        setSyncPhase("local");
+        settle("local");
         return;
       }
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        setSyncPhase("offline");
+        settle("offline");
         return;
       }
       logSync(error instanceof Error ? error.message : "round failed");
-      setSyncPhase("error");
+      settle("error");
     } finally {
+      if (open && epoch === syncEpoch) settle(stopped ? "local" : "error");
       running = false;
-      if (queued && !stopped) {
+      if (queued && !stopped && epoch === syncEpoch) {
         queued = false;
         schedule();
       }
@@ -238,7 +269,7 @@ export function startGymSync() {
       baseline = next;
       return;
     }
-    const stones = collectTombstones(baseline, next);
+    const stones = collectTombstones(baseline, next).filter((row) => !isDemoTombstone(row, baseline));
     baseline = next;
     if (stones.length > 0) addTombstones(stones);
     schedule();

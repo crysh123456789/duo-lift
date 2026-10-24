@@ -60,6 +60,40 @@ export function proteinTargetG(weightKg: number) {
   return Math.round(weightKg * 1.8);
 }
 
+/** Bounds stored by sync_apply. Out of range is treated as unset. */
+export const PROTEIN_TARGET_MAX = 1000;
+export const KCAL_TARGET_MAX = 20000;
+
+export function clampDailyTarget(value: unknown, max: number): number | null {
+  if (value == null || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  if (rounded < 1 || rounded > max) return null;
+  return rounded;
+}
+
+/** Diary denominator. Weight-derived grams are a later phase and are not used here. */
+export function manualProteinGoal(user: { proteinTargetG?: number | null } | null | undefined): number | null {
+  return clampDailyTarget(user?.proteinTargetG, PROTEIN_TARGET_MAX);
+}
+
+export function manualKcalGoal(user: { kcalTarget?: number | null } | null | undefined): number | null {
+  return clampDailyTarget(user?.kcalTarget, KCAL_TARGET_MAX);
+}
+
+/** Protein grams from body weight. There is no kcal formula here. */
+export function weightProteinSuggestion(weightKg: number | null | undefined): number | null {
+  if (typeof weightKg !== "number" || !Number.isFinite(weightKg) || weightKg <= 0) return null;
+  return clampDailyTarget(proteinTargetG(weightKg), PROTEIN_TARGET_MAX);
+}
+
+/** A manual protein goal is replaced only after the person confirms. */
+export function proteinGoalNeedsConfirm(current: number | null, suggestion: number | null): boolean {
+  if (suggestion == null || current == null) return false;
+  return current !== suggestion;
+}
+
 function finiteNonNegative(value: unknown): number | null {
   if (value == null || value === "") return null;
   const parsed = typeof value === "number" ? value : Number(value);
@@ -123,6 +157,96 @@ export function normalizeFoodDay(day: FoodDay): FoodDay {
 
 export function normalizeFoodDays(days: FoodDay[] | undefined): FoodDay[] {
   return (days ?? []).map((day) => normalizeFoodDay(day));
+}
+
+function slotHasContent(entry: MealEntry): boolean {
+  return mealLogged(entry) || Boolean(entry.time);
+}
+
+/** Same item id: the newer copy wins. Items that exist on only one side stay. */
+function mergeMealItems(older: MealItem[], newer: MealItem[]): MealItem[] {
+  const newerById = new Map(newer.map((item) => [item.id, item]));
+  const seen = new Set<string>();
+  const out: MealItem[] = [];
+  for (const item of older) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(newerById.get(item.id) ?? item);
+  }
+  for (const item of newer) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
+}
+
+/** Newer slot wins field by field. An empty newer slot does not erase a filled one. */
+export function mergeMealSlot(olderValue: unknown, newerValue: unknown): MealEntry {
+  const older = normalizeMealEntry(olderValue);
+  const newer = normalizeMealEntry(newerValue);
+  if (!slotHasContent(newer)) return older;
+  if (!slotHasContent(older)) return newer;
+  return {
+    time: newer.time ?? older.time,
+    note: newer.note.trim() ? newer.note : older.note,
+    items: mergeMealItems(older.items, newer.items),
+  };
+}
+
+export function mergeFoodMeals(olderMeals: unknown, newerMeals: unknown): MealLog {
+  const older = normalizeMealLog(olderMeals);
+  const newer = normalizeMealLog(newerMeals);
+  const meals = emptyMeals();
+  for (const slot of MEAL_SLOTS) meals[slot.id] = mergeMealSlot(older[slot.id], newer[slot.id]);
+  return meals;
+}
+
+function preferNewer(older: FoodDay, newer: FoodDay): boolean {
+  if (newer.updatedAt !== older.updatedAt) return newer.updatedAt > older.updatedAt;
+  return newer.id >= older.id;
+}
+
+/** Folds two days. The newer row keeps the id. Non-empty slots from the other row stay. */
+export function mergeFoodDayPair(older: FoodDay, newer: FoodDay): FoodDay {
+  const newerIsSecond = preferNewer(older, newer);
+  const first = newerIsSecond ? older : newer;
+  const second = newerIsSecond ? newer : older;
+  return {
+    ...second,
+    meals: mergeFoodMeals(first.meals, second.meals),
+    comment: second.comment.trim() ? second.comment : first.comment,
+    rawInput: second.rawInput ?? first.rawInput,
+    updatedAt: second.updatedAt >= first.updatedAt ? second.updatedAt : first.updatedAt,
+  };
+}
+
+/**
+ * One row per person and date. Meals are merged; the other id is omitted and must
+ * not become a tombstone. A real delete is a date with no surviving row.
+ */
+export function collapseFoodDays(rows: FoodDay[] | undefined): FoodDay[] {
+  const groups = new Map<string, FoodDay[]>();
+  for (const row of rows ?? []) {
+    const key = `${row.userId}|${row.date}`;
+    const list = groups.get(key) ?? [];
+    list.push(row);
+    groups.set(key, list);
+  }
+  const out: FoodDay[] = [];
+  for (const list of groups.values()) {
+    const ranked = [...list].sort((a, b) => {
+      if (a.updatedAt !== b.updatedAt) return a.updatedAt < b.updatedAt ? -1 : 1;
+      return a.id.localeCompare(b.id);
+    });
+    let merged = ranked[0];
+    for (const next of ranked.slice(1)) {
+      if (!merged) break;
+      merged = mergeFoodDayPair(merged, next);
+    }
+    if (merged) out.push(merged);
+  }
+  return out;
 }
 
 export function mealLogged(value: unknown): boolean {
@@ -411,15 +535,15 @@ export function nutritionComment(user: User, meals: unknown): string {
   const gaps = flags.gaps.map((slot) => slot.label.toLowerCase());
   const bits: string[] = [];
 
+  const manual = manualProteinGoal(user);
   if (user.nutritionGoal === "surplus_muscle") {
     if (hasMacros) {
       const protein = Math.round(totals.proteinG);
-      if (user.weightKg) {
-        const target = proteinTargetG(user.weightKg);
+      if (manual != null) {
         bits.push(
-          protein >= target
-            ? `Proteína de hoy: ${protein} g, en la meta de ${target} g para recuperar músculo.`
-            : `Proteína de hoy: ${protein} g de ${target} g. Aún cabe más para ganar músculo.`,
+          protein >= manual
+            ? `Proteína de hoy: ${protein} g, en la meta de ${manual} g para recuperar músculo.`
+            : `Proteína de hoy: ${protein} g de ${manual} g. Aún cabe más para ganar músculo.`,
         );
       } else if (flags.protein) {
         bits.push("La proteína aparece en los alimentos, eso ayuda a la masa muscular.");
@@ -459,9 +583,12 @@ export function nutritionComment(user: User, meals: unknown): string {
     bits.push(`Si hay hueco, un extra en ${gaps[0]?.toLowerCase()} suma calorías sin forzar el estómago.`);
   }
 
-  if (user.weightKg && !hasMacros) {
+  if (!hasMacros && manual != null) {
+    const kcal = manualKcalGoal(user);
     bits.push(
-      `Objetivo: ~${proteinTargetG(user.weightKg)} g de proteína al día y un superávit suave (300–500 kcal) con entrenos de fuerza.`,
+      kcal != null
+        ? `Objetivo: ${manual} g de proteína y ${kcal} kcal al día, con entrenos de fuerza.`
+        : `Objetivo: ${manual} g de proteína al día y un superávit suave (300–500 kcal) con entrenos de fuerza.`,
     );
   }
 

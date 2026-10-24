@@ -1,3 +1,4 @@
+import { collapseFoodDays } from "@/lib/nutrition";
 import { createSeed } from "@/lib/seed";
 import { workoutClock } from "@/lib/session-date";
 import type { FoodDay, GymData, ReminderSettings } from "@/lib/types";
@@ -328,19 +329,20 @@ function mergeLoads(
   return out;
 }
 
-function collapseFoodDays(rows: FoodDay[]): FoodDay[] {
-  const byDay = new Map<string, FoodDay>();
-  for (const row of rows) {
-    const key = `${row.userId}|${row.date}`;
-    const prev = byDay.get(key);
-    if (!prev || row.updatedAt >= prev.updatedAt) byDay.set(key, row);
-  }
-  return [...byDay.values()];
-}
-
 export function collectTombstones(prev: GymData, next: GymData): Tombstone[] {
   const out: Tombstone[] = [];
   for (const entity of LIST_ENTITIES) {
+    if (entity === "foodDays") {
+      const nextDays = next.foodDays ?? [];
+      const nextIds = new Set(nextDays.map((row) => row.id));
+      for (const row of prev.foodDays ?? []) {
+        if (nextIds.has(row.id)) continue;
+        const absorbed = nextDays.some((other) => other.userId === row.userId && other.date === row.date);
+        if (absorbed) continue;
+        out.push({ entity: "foodDays", id: row.id });
+      }
+      continue;
+    }
     const nextIds = new Set(next[entity].map((row) => row.id));
     for (const row of prev[entity]) {
       if (!nextIds.has(row.id)) out.push({ entity, id: row.id });

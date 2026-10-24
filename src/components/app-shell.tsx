@@ -67,7 +67,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             const on =
               item.href === "/"
                 ? pathname === "/"
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
+                : item.href === "/history"
+                  ? pathname === "/history" || pathname === "/loads"
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <li key={item.href} className="flex-1 md:flex-none">
                 <Link
