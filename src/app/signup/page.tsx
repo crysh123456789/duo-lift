@@ -8,14 +8,15 @@ import { BodyWeightField } from "@/components/body-weight-field";
 import { Button, Field, Panel } from "@/components/ui";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/constants";
 import { authErrorMessage } from "@/lib/auth/errors";
-import { BODY_WEIGHT_ERROR } from "@/lib/nutrition";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
-function optionalNumber(raw: string): number | null {
+function optionalHeight(raw: string): number | null | undefined {
   const trimmed = raw.trim().replace(",", ".");
   if (!trimmed) return null;
+  if (!/^\d+(\.\d)?$/.test(trimmed)) return undefined;
   const value = Number(trimmed);
-  return Number.isFinite(value) ? value : null;
+  if (!Number.isFinite(value) || value < 50 || value > 272) return undefined;
+  return value;
 }
 
 export default function SignupPage() {
@@ -25,7 +26,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [height, setHeight] = useState("");
   const [weightKg, setWeightKg] = useState<number | null>(null);
-  const [weightInvalid, setWeightInvalid] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -43,11 +44,15 @@ export default function SignupPage() {
       setError("Falta la configuración de la cuenta.");
       return;
     }
-    if (weightInvalid) {
-      setError(BODY_WEIGHT_ERROR);
+    if (weightError) {
+      setError(weightError);
       return;
     }
-    const heightCm = optionalNumber(height);
+    const heightCm = optionalHeight(height);
+    if (heightCm === undefined) {
+      setError("La estatura debe estar entre 50 y 272 cm, con máximo un decimal.");
+      return;
+    }
     setBusy(true);
     const { data, error: signError } = await supabase.auth.signUp({
       email: email.trim(),
@@ -70,15 +75,6 @@ export default function SignupPage() {
       setNotice("Revisa tu correo para confirmar la cuenta. Después podrás entrar.");
       return;
     }
-    await supabase
-      .from("users")
-      .update({
-        display_name: name.trim() || undefined,
-        email: email.trim(),
-        height_cm: heightCm,
-        weight_kg: weightKg,
-      })
-      .eq("id", data.user.id);
     setBusy(false);
     router.replace("/");
     router.refresh();
@@ -135,7 +131,7 @@ export default function SignupPage() {
                   className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 font-mono outline-none focus:border-accent"
                 />
               </Field>
-              <BodyWeightField weightKg={weightKg} onWeightKg={setWeightKg} onInvalid={setWeightInvalid} />
+              <BodyWeightField weightKg={weightKg} onWeightKg={setWeightKg} onInvalid={setWeightError} />
             </div>
           </details>
           {error ? <p className="text-sm text-danger">{error}</p> : null}

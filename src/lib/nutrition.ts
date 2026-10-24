@@ -90,25 +90,32 @@ export function syncBodyWeightKg(value: number | null | undefined): number | nul
 }
 
 export const BODY_WEIGHT_ERROR = "Usa un número entre 20 y 400, con máximo un decimal";
+export const BODY_WEIGHT_NUMERIC_ERROR = "El peso debe ser un número";
 
 export type BodyWeightParse =
   | { state: "empty"; weightKg: null }
   | { state: "incomplete" }
   | { state: "ok"; weightKg: number }
-  | { state: "error" };
+  | { state: "error"; message: string };
 
-/** '60,4' and '60.4' are 60.4. Anything else in the field is an error, except a trailing separator. */
+/** '60,4' and '60.4' are 60.4. A non-number says so. Range and extra decimals use BODY_WEIGHT_ERROR. */
 export function parseBodyWeightInput(raw: string): BodyWeightParse {
   const trimmed = raw.trim();
   if (!trimmed) return { state: "empty", weightKg: null };
   if (/^\d+[.,]$/.test(trimmed)) return { state: "incomplete" };
   const normalized = trimmed.replace(",", ".");
-  if (!/^\d+(\.\d+)?$/.test(normalized)) return { state: "error" };
+  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
+    return { state: "error", message: BODY_WEIGHT_NUMERIC_ERROR };
+  }
   const fraction = normalized.split(".")[1];
-  if (fraction && fraction.length > 1) return { state: "error" };
   const weightKg = Number(normalized);
-  if (!Number.isFinite(weightKg) || weightKg < WEIGHT_KG_MIN || weightKg > WEIGHT_KG_MAX) {
-    return { state: "error" };
+  if (
+    (fraction && fraction.length > 1) ||
+    !Number.isFinite(weightKg) ||
+    weightKg < WEIGHT_KG_MIN ||
+    weightKg > WEIGHT_KG_MAX
+  ) {
+    return { state: "error", message: BODY_WEIGHT_ERROR };
   }
   return { state: "ok", weightKg };
 }

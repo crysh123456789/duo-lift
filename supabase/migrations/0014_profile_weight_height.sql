@@ -11,8 +11,10 @@
 --   * a client clock more than 5 minutes ahead of now() errors before any write
 --
 -- sync_apply stays security invoker with search_path = public, so RLS still
--- applies to the signed-in user. This migration does not replace SECURITY
--- DEFINER functions; those keep search_path = ''.
+-- applies to the signed-in user. The users-row write moves to
+-- apply_synced_user, security definer with search_path = '', because
+-- authenticated no longer has UPDATE on public.users. Existing SECURITY
+-- DEFINER functions are not replaced; those keep search_path = ''.
 --
 -- Deleting every item of a meal at once used to come back. merge_meal_slot
 -- treats an empty slot as "no opinion", so the older items survived. An
@@ -38,6 +40,56 @@ update public.users
 set profile_updated_at = now()
 where profile_updated_at is null
   and (weight_kg is not null or height_cm is not null);
+
+-- Checked on the live project before this file was written: 3 users, weights
+-- 60–74, heights 167–175, protein 120, kcal 2500. No row failed. NOT VALID
+-- then VALIDATE so a bad historical row would fail here instead of blocking
+-- new writes only.
+alter table public.users
+  drop constraint if exists users_weight_kg_range;
+alter table public.users
+  add constraint users_weight_kg_range
+  check (
+    weight_kg is null
+    or (
+      weight_kg >= 20
+      and weight_kg <= 400
+      and weight_kg = round(weight_kg, 1)
+      and weight_kg <> 'NaN'::numeric
+    )
+  ) not valid;
+alter table public.users validate constraint users_weight_kg_range;
+
+alter table public.users
+  drop constraint if exists users_height_cm_range;
+alter table public.users
+  add constraint users_height_cm_range
+  check (
+    height_cm is null
+    or (
+      height_cm >= 50
+      and height_cm <= 272
+      and height_cm = round(height_cm, 1)
+      and height_cm <> 'NaN'::numeric
+    )
+  ) not valid;
+alter table public.users validate constraint users_height_cm_range;
+
+alter table public.users
+  drop constraint if exists users_protein_target_g_range;
+alter table public.users
+  add constraint users_protein_target_g_range
+  check (protein_target_g is null or (protein_target_g >= 0 and protein_target_g <= 500))
+  not valid;
+alter table public.users validate constraint users_protein_target_g_range;
+
+alter table public.users
+  drop constraint if exists users_kcal_target_range;
+alter table public.users
+  add constraint users_kcal_target_range
+  check (kcal_target is null or (kcal_target >= 0 and kcal_target <= 10000))
+  not valid;
+alter table public.users validate constraint users_kcal_target_range;
 
 create or replace function public.strip_meal_item(meals jsonb, item_id text)
 returns jsonb
@@ -133,68 +185,28 @@ begin
 end;
 $fn$;
 
-create or replace function public.sync_apply(payload jsonb)
-returns jsonb
+create or replace function public.apply_synced_user(payload jsonb)
+returns void
 language plpgsql
-security invoker
-set search_path = public
-as $$
+security definer
+set search_path = ''
+as $apply_user$
 declare
   v_uid text := (select auth.uid())::text;
-  v_label text;
-  rec record;
-  v_deleted integer;
-  food_date text;
-  kept_id text;
-  acc_meals jsonb;
-  acc_comment text;
-  acc_raw text;
-  acc_at timestamptz;
-  version record;
-  payload_has_kept boolean;
-  rejected_food jsonb := '[]'::jsonb;
   user_el jsonb;
   protein_text text;
   kcal_text text;
   weight_text text;
+  height_text text;
   protein_num numeric;
   kcal_num numeric;
   weight_num numeric;
+  height_num numeric;
   targets_at timestamptz;
   profile_at timestamptz;
 begin
   if v_uid is null then
     raise exception 'not_authenticated' using errcode = '28000';
-  end if;
-  if jsonb_typeof(payload) is distinct from 'object' then
-    raise exception 'payload must be an object';
-  end if;
-  if jsonb_array_length(coalesce(payload->'sets', '[]'::jsonb)) > 20000
-     or jsonb_array_length(coalesce(payload->'workouts', '[]'::jsonb)) > 5000 then
-    raise exception 'payload too large';
-  end if;
-
-  -- food_days: at most 5000 rows and 16777216 bytes (16 MiB). Oversize writes nothing.
-  if payload ? 'food_days'
-     and jsonb_typeof(payload->'food_days') is distinct from 'array'
-     and jsonb_typeof(payload->'food_days') is distinct from 'null' then
-    raise exception 'food_days must be an array' using errcode = '22023';
-  end if;
-  if jsonb_array_length(coalesce(payload->'food_days', '[]'::jsonb)) > 5000 then
-    raise exception 'too many food_days' using errcode = '22023';
-  end if;
-  if octet_length(coalesce(payload->'food_days', '[]'::jsonb)::text) > 16777216 then
-    raise exception 'food_days payload too large' using errcode = '54000';
-  end if;
-
-  -- Label only. Missing or unknown ids fall back to the caller's own row, then
-  -- the historical duo-1 shell. This does not grant access to that duo.
-  v_label := payload #>> '{duo,id}';
-  if v_label is null or v_label !~ '^[A-Za-z0-9_-]{1,80}$' then
-    v_label := coalesce(
-      (select w.duo_id from public.workouts w where w.user_id = v_uid limit 1),
-      'duo-1'
-    );
   end if;
 
   -- protein_target_g is an integer 0..500 g, kcal_target is an integer 0..10000.
@@ -223,6 +235,33 @@ begin
       end if;
       if weight_num < 20 or weight_num > 400 then
         raise exception 'weight_kg out of range' using errcode = '22023';
+      end if;
+    end if;
+
+    -- height_cm, when present: numeric 50..272 cm, at most one decimal.
+    -- NaN, Infinity, and negatives are rejected before any write.
+    height_text := user_el->>'height_cm';
+    if height_text is not null and btrim(height_text) <> '' then
+      if height_text ~* 'nan|infinity|inf' then
+        raise exception 'height_cm must be numeric' using errcode = '22023';
+      end if;
+      begin
+        height_num := height_text::numeric;
+      exception
+        when others then
+          raise exception 'height_cm must be numeric' using errcode = '22023';
+      end;
+      if height_num = 'NaN'::numeric then
+        raise exception 'height_cm must be numeric' using errcode = '22023';
+      end if;
+      if height_num < 0 then
+        raise exception 'height_cm out of range' using errcode = '22023';
+      end if;
+      if height_num <> round(height_num, 1) then
+        raise exception 'height_cm must have at most 1 decimal' using errcode = '22023';
+      end if;
+      if height_num < 50 or height_num > 272 then
+        raise exception 'height_cm out of range' using errcode = '22023';
       end if;
     end if;
 
@@ -428,6 +467,72 @@ begin
   )
   where dest.id = v_uid
     and src.id = v_uid;
+
+end;
+$apply_user$;
+
+revoke all on function public.apply_synced_user(jsonb) from public;
+revoke all on function public.apply_synced_user(jsonb) from anon;
+revoke all on function public.apply_synced_user(jsonb) from service_role;
+grant execute on function public.apply_synced_user(jsonb) to authenticated;
+
+create or replace function public.sync_apply(payload jsonb)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_uid text := (select auth.uid())::text;
+  v_label text;
+  rec record;
+  v_deleted integer;
+  food_date text;
+  kept_id text;
+  acc_meals jsonb;
+  acc_comment text;
+  acc_raw text;
+  acc_at timestamptz;
+  version record;
+  payload_has_kept boolean;
+  rejected_food jsonb := '[]'::jsonb;
+begin
+  if v_uid is null then
+    raise exception 'not_authenticated' using errcode = '28000';
+  end if;
+  if jsonb_typeof(payload) is distinct from 'object' then
+    raise exception 'payload must be an object';
+  end if;
+  if jsonb_array_length(coalesce(payload->'sets', '[]'::jsonb)) > 20000
+     or jsonb_array_length(coalesce(payload->'workouts', '[]'::jsonb)) > 5000 then
+    raise exception 'payload too large';
+  end if;
+
+  -- food_days: at most 5000 rows and 16777216 bytes (16 MiB). Oversize writes nothing.
+  if payload ? 'food_days'
+     and jsonb_typeof(payload->'food_days') is distinct from 'array'
+     and jsonb_typeof(payload->'food_days') is distinct from 'null' then
+    raise exception 'food_days must be an array' using errcode = '22023';
+  end if;
+  if jsonb_array_length(coalesce(payload->'food_days', '[]'::jsonb)) > 5000 then
+    raise exception 'too many food_days' using errcode = '22023';
+  end if;
+  if octet_length(coalesce(payload->'food_days', '[]'::jsonb)::text) > 16777216 then
+    raise exception 'food_days payload too large' using errcode = '54000';
+  end if;
+
+  -- Label only. Missing or unknown ids fall back to the caller's own row, then
+  -- the historical duo-1 shell. This does not grant access to that duo.
+  v_label := payload #>> '{duo,id}';
+  if v_label is null or v_label !~ '^[A-Za-z0-9_-]{1,80}$' then
+    v_label := coalesce(
+      (select w.duo_id from public.workouts w where w.user_id = v_uid limit 1),
+      'duo-1'
+    );
+  end if;
+
+  -- Profile columns are written here, as the table owner. authenticated has no UPDATE.
+  perform public.apply_synced_user(payload);
 
   insert into public.exercise_catalog (
     id, name, muscle_group, equipment, is_unilateral, created_by_user_id, duo_id
@@ -1046,5 +1151,14 @@ revoke all on function public.sync_apply(jsonb) from anon;
 revoke all on function public.sync_apply(jsonb) from service_role;
 grant execute on function public.sync_apply(jsonb) to authenticated;
 
+-- Authenticated writes the profile through sync_apply -> apply_synced_user.
+-- A direct REST PATCH has no table or column UPDATE. Signup seeds the row
+-- from auth metadata in private.handle_new_user, so no client UPDATE remains
+-- and no BEFORE UPDATE trigger is required.
+drop policy if exists users_update_own on public.users;
+revoke update on table public.users from public;
+revoke update on table public.users from anon;
+revoke update on table public.users from authenticated;
+grant select on table public.users to authenticated;
 
 notify pgrst, 'reload schema';

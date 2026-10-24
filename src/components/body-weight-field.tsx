@@ -14,18 +14,24 @@ export function BodyWeightField({
 }: {
   weightKg: number | null;
   onWeightKg: (weightKg: number | null) => void;
-  onInvalid?: (invalid: boolean) => void;
+  onInvalid?: (message: string | null) => void;
 }) {
   const errorId = useId();
   const [text, setText] = useState(() => formatBodyWeight(weightKg));
   const [showIncomplete, setShowIncomplete] = useState(false);
   const dirty = useRef(false);
   const parsed = parseBodyWeightInput(text);
-  const invalid = parsed.state === "error" || (showIncomplete && parsed.state === "incomplete");
+  const message =
+    parsed.state === "error"
+      ? parsed.message
+      : showIncomplete && parsed.state === "incomplete"
+        ? BODY_WEIGHT_ERROR
+        : "";
+  const invalid = message !== "";
 
   useEffect(() => {
-    onInvalid?.(invalid);
-  }, [invalid, onInvalid]);
+    onInvalid?.(message || null);
+  }, [message, onInvalid]);
 
   useEffect(() => {
     if (dirty.current) return;
@@ -64,7 +70,7 @@ export function BodyWeightField({
       />
       {invalid ? (
         <span id={errorId} role="alert" className="mt-1 block text-xs text-danger">
-          {BODY_WEIGHT_ERROR}
+          {message}
         </span>
       ) : null}
     </label>

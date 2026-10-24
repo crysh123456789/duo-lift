@@ -4,6 +4,7 @@ import { describe, test } from "node:test";
 import { dueReminders, DEFAULT_REMINDERS } from "./reminders.ts";
 import {
   BODY_WEIGHT_ERROR,
+  BODY_WEIGHT_NUMERIC_ERROR,
   collapseFoodDays,
   dayTotals,
   diaryProteinGoal,
@@ -198,6 +199,7 @@ describe("manual nutrition goals", () => {
 
   test("the weight field accepts one comma decimal and rejects anything else", () => {
     assert.equal(BODY_WEIGHT_ERROR, "Usa un número entre 20 y 400, con máximo un decimal");
+    assert.equal(BODY_WEIGHT_NUMERIC_ERROR, "El peso debe ser un número");
     assert.deepEqual(parseBodyWeightInput("60,4"), { state: "ok", weightKg: 60.4 });
     assert.deepEqual(parseBodyWeightInput("60.4"), { state: "ok", weightKg: 60.4 });
     assert.deepEqual(parseBodyWeightInput(" 20 "), { state: "ok", weightKg: 20 });
@@ -206,14 +208,15 @@ describe("manual nutrition goals", () => {
     assert.deepEqual(parseBodyWeightInput("   "), { state: "empty", weightKg: null });
     assert.deepEqual(parseBodyWeightInput("60,"), { state: "incomplete" });
     assert.deepEqual(parseBodyWeightInput("60."), { state: "incomplete" });
-    assert.equal(parseBodyWeightInput("abc").state, "error");
-    assert.equal(parseBodyWeightInput("60,44").state, "error");
-    assert.equal(parseBodyWeightInput("10").state, "error");
-    assert.equal(parseBodyWeightInput("400.5").state, "error");
-    assert.equal(parseBodyWeightInput("60.4.1").state, "error");
+    assert.deepEqual(parseBodyWeightInput("abc"), { state: "error", message: BODY_WEIGHT_NUMERIC_ERROR });
+    assert.deepEqual(parseBodyWeightInput("60.4.1"), { state: "error", message: BODY_WEIGHT_NUMERIC_ERROR });
+    assert.deepEqual(parseBodyWeightInput("60,44"), { state: "error", message: BODY_WEIGHT_ERROR });
+    assert.deepEqual(parseBodyWeightInput("10"), { state: "error", message: BODY_WEIGHT_ERROR });
+    assert.deepEqual(parseBodyWeightInput("400.5"), { state: "error", message: BODY_WEIGHT_ERROR });
+    assert.deepEqual(parseBodyWeightInput("-1"), { state: "error", message: BODY_WEIGHT_ERROR });
     const field = readFileSync(new URL("../components/body-weight-field.tsx", import.meta.url), "utf8");
     assert.match(field, /inputMode="decimal"/);
-    assert.match(field, /\{BODY_WEIGHT_ERROR\}/);
+    assert.match(field, /\{message\}/);
     assert.match(field, /role="alert"/);
   });
 
