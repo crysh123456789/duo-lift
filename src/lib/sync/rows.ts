@@ -1,5 +1,11 @@
 import { loadKey } from "@/lib/loads";
-import { KCAL_TARGET_MAX, PROTEIN_TARGET_MAX, clampDailyTarget, normalizeMealLog } from "@/lib/nutrition";
+import {
+  KCAL_TARGET_MAX,
+  KCAL_TARGET_MIN,
+  PROTEIN_TARGET_MAX,
+  clampDailyTarget,
+  normalizeMealLog,
+} from "@/lib/nutrition";
 import type {
   BlockKind,
   Equipment,
@@ -30,6 +36,7 @@ export type UserRow = {
   nutrition_goal: string | null;
   protein_target_g?: string | number | null;
   kcal_target?: string | number | null;
+  targets_updated_at?: string | null;
   created_at: string;
 };
 
@@ -199,7 +206,8 @@ export function gymFromRows(tables: RemoteTables): { data: GymData; remindersFro
         ? (row.nutrition_goal as NutritionGoal)
         : null,
       proteinTargetG: clampDailyTarget(row.protein_target_g, PROTEIN_TARGET_MAX),
-      kcalTarget: clampDailyTarget(row.kcal_target, KCAL_TARGET_MAX),
+      kcalTarget: clampDailyTarget(row.kcal_target, KCAL_TARGET_MAX, KCAL_TARGET_MIN),
+      targetsUpdatedAt: iso(row.targets_updated_at),
       createdAt: iso(row.created_at) ?? new Date(0).toISOString(),
     })),
     members: tables.members.map((row) => ({

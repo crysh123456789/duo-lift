@@ -1,5 +1,11 @@
 import { collapseFoodDays } from "@/lib/nutrition";
-import { KCAL_TARGET_MAX, PROTEIN_TARGET_MAX, clampDailyTarget } from "@/lib/nutrition";
+import {
+  KCAL_TARGET_MAX,
+  KCAL_TARGET_MIN,
+  PROTEIN_TARGET_MAX,
+  PROTEIN_TARGET_MIN,
+  clampDailyTarget,
+} from "@/lib/nutrition";
 import { createSeed } from "@/lib/seed";
 import { workoutClock } from "@/lib/session-date";
 import type { FoodDay, GymData, ReminderSettings, User, Workout } from "@/lib/types";
@@ -249,62 +255,83 @@ function applyTombstones(local: GymData, tombstones: Tombstone[]): GymData {
   return { ...local, workouts, blocks, stations, sets, reactions, exercises, foodDays, workingLoads, members };
 }
 
-function ackObject(ack: Record<string, string>, key: string): Record<string, unknown> | null {
-  const raw = ack[key];
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    return parsed as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * A null on the phone must not hide a goal that was set on the server.
- * A goal this phone already acknowledged and then cleared stays cleared.
+ * Only a newer edit on this phone (including a clear) beats the server clock.
  */
 function mergeTarget(
-  chosen: number | null | undefined,
   local: number | null | undefined,
   remote: number | null | undefined,
-  acked: unknown,
+  localEditAt: string | null | undefined,
+  remoteAt: string | null | undefined,
   max: number,
+  min: number,
 ): number | null {
-  const chosenValue = clampDailyTarget(chosen, max);
-  const localValue = clampDailyTarget(local, max);
-  const remoteValue = clampDailyTarget(remote, max);
-  const ackedValue = clampDailyTarget(acked, max);
-  if (ackedValue != null && localValue == null) return null;
-  if (chosenValue != null) return chosenValue;
-  if (localValue == null && remoteValue != null) return remoteValue;
-  return null;
+  const localValue = clampDailyTarget(local, max, min);
+  const remoteValue = clampDailyTarget(remote, max, min);
+  if (localEditAt && (!remoteAt || localEditAt > remoteAt)) return localValue;
+  if (remoteValue != null) return remoteValue;
+  if (
+    localEditAt &&
+    remoteAt &&
+    localEditAt <= remoteAt &&
+    remoteValue == null
+  ) {
+    return null;
+  }
+  return localValue;
 }
 
-function withServerTargets(
-  chosen: User,
-  local: User | undefined,
-  remote: User | undefined,
-  acked: Record<string, unknown> | null,
-): User {
+function withServerTargets(chosen: User, local: User | undefined, remote: User | undefined): User {
+  const remoteAt = remote?.targetsUpdatedAt ?? null;
   return {
     ...chosen,
     proteinTargetG: mergeTarget(
-      chosen.proteinTargetG,
       local?.proteinTargetG,
       remote?.proteinTargetG,
-      acked?.proteinTargetG,
+      local?.proteinTargetUpdatedAt,
+      remoteAt,
       PROTEIN_TARGET_MAX,
+      PROTEIN_TARGET_MIN,
     ),
     kcalTarget: mergeTarget(
-      chosen.kcalTarget,
       local?.kcalTarget,
       remote?.kcalTarget,
-      acked?.kcalTarget,
+      local?.kcalTargetUpdatedAt,
+      remoteAt,
       KCAL_TARGET_MAX,
+      KCAL_TARGET_MIN,
     ),
+    targetsUpdatedAt: remoteAt ?? local?.targetsUpdatedAt ?? null,
+    proteinTargetUpdatedAt: local?.proteinTargetUpdatedAt ?? null,
+    kcalTargetUpdatedAt: local?.kcalTargetUpdatedAt ?? null,
   };
+}
+
+/** Copies merged goals onto the phone rows before an upload. */
+export function usersWithServerTargets(local: User[], merged: User[]): User[] {
+  const byId = new Map(merged.map((row) => [row.id, row]));
+  const seen = new Set<string>();
+  const next = local.map((row) => {
+    seen.add(row.id);
+    const fromServer = byId.get(row.id);
+    if (!fromServer) return row;
+    const serverClock = fromServer.targetsUpdatedAt ?? null;
+    const keepProtein = Boolean(row.proteinTargetUpdatedAt && (!serverClock || row.proteinTargetUpdatedAt > serverClock));
+    const keepKcal = Boolean(row.kcalTargetUpdatedAt && (!serverClock || row.kcalTargetUpdatedAt > serverClock));
+    return {
+      ...row,
+      proteinTargetG: keepProtein ? (row.proteinTargetG ?? null) : (fromServer.proteinTargetG ?? null),
+      kcalTarget: keepKcal ? (row.kcalTarget ?? null) : (fromServer.kcalTarget ?? null),
+      targetsUpdatedAt: serverClock ?? row.targetsUpdatedAt ?? null,
+      proteinTargetUpdatedAt: row.proteinTargetUpdatedAt ?? fromServer.proteinTargetUpdatedAt ?? null,
+      kcalTargetUpdatedAt: row.kcalTargetUpdatedAt ?? fromServer.kcalTargetUpdatedAt ?? null,
+    };
+  });
+  for (const row of merged) {
+    if (!seen.has(row.id)) next.push(row);
+  }
+  return next;
 }
 
 function mergeUsers(
@@ -330,7 +357,7 @@ function mergeUsers(
       (row) => row.createdAt,
       preferLocal,
     );
-    if (chosen) out.push(withServerTargets(chosen, localUser, remoteUser, ackObject(ack, `users:${id}`)));
+    if (chosen) out.push(withServerTargets(chosen, localUser, remoteUser));
   }
   return out;
 }
@@ -457,6 +484,23 @@ export function ackMap(data: GymData): Record<string, string> {
   return out;
 }
 
+/** Phone-only edit clocks must not look like a different row from the server. */
+function withoutLocalTargetEdits(data: GymData): GymData {
+  return {
+    ...data,
+    users: data.users.map((row) => {
+      const next = { ...row };
+      delete next.proteinTargetUpdatedAt;
+      delete next.kcalTargetUpdatedAt;
+      return next;
+    }),
+  };
+}
+
 export function snapshotsMatch(left: GymData, right: GymData, ignoreReminders = false): boolean {
-  return sameSnapshot(canonicalize(left), canonicalize(right), { ignoreReminders });
+  return sameSnapshot(
+    canonicalize(withoutLocalTargetEdits(left)),
+    canonicalize(withoutLocalTargetEdits(right)),
+    { ignoreReminders },
+  );
 }

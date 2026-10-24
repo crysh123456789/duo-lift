@@ -20,7 +20,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 Supabase Auth (correo y contraseña) es la identidad. Cada cuenta ve solo sus entrenos y su diario. No hay clave compartida ni chips para cambiar de persona. El inicio de sesión entra directo a la app. La app no muestra una pantalla para traer un historial legado.
 
-Los RPC `claim_legacy_history`, `decline_legacy_history` y `legacy_history_status` siguen en la base (migraciones `0007`–`0012`). Este cliente no llama a `claim_legacy_history`. Si no hay decisión y no queda nada abierto, llama a `decline_legacy_history` y deja `clean`. Si todavía hay filas abiertas, entra sin reclamar y sin escribir `clean`. Una decisión ya guardada sigue reetiquetando esas filas en el teléfono. La cuenta `user-amigo` la borra operaciones; esta app no tira objetos ni migraciones.
+`claim_legacy_history` se elimina en `0013` (esquemas `public` y `private`, todas las sobrecargas). `private.legacy_claims` se vacía y se le revocan los privilegios; la tabla sigue porque `decline_legacy_history` y `legacy_history_status` todavía la leen. Este cliente no llama a `claim_legacy_history`. Si no hay decisión y no queda nada abierto, llama a `decline_legacy_history` y deja `clean`. Una decisión ya guardada sigue reetiquetando esas filas en el teléfono. La cuenta `user-amigo` la borra operaciones; esta app no tira esa fila.
 
 En Authentication → Providers → Email, desactiva **Confirm email** para que Crear cuenta abra la sesión. Si queda activo, la app pide revisar el correo. Ese interruptor es un paso de operaciones aparte del enlace de recuperación.
 

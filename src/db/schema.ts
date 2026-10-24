@@ -17,8 +17,8 @@ import {
 /**
  * Postgres schema aligned with supabase/migrations/0001_init.sql,
  * 0002_duo_local_sync.sql, 0008_soft_delete.sql, 0009_nutrition_targets.sql,
- * 0010_food_day_merge.sql, 0011_food_day_history_rls.sql, and
- * 0012_legacy_claim_binding.sql.
+ * 0010_food_day_merge.sql, 0011_food_day_history_rls.sql,
+ * 0012_legacy_claim_binding.sql, and 0013_drop_legacy_claim.sql.
  * Identifiers are text because the Zustand store uses slugs (`user-cristian`,
  * `ex-banca`) and uuid strings from `nid()`, not auth.users ids.
  */
@@ -33,6 +33,7 @@ export const users = pgTable("users", {
   nutritionGoal: text("nutrition_goal"),
   proteinTargetG: integer("protein_target_g"),
   kcalTarget: integer("kcal_target"),
+  targetsUpdatedAt: timestamp("targets_updated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

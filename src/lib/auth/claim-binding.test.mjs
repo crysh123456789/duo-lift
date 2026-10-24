@@ -3,117 +3,47 @@ import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 
 const sql = readFileSync(
+  new URL("../../../supabase/migrations/0013_drop_legacy_claim.sql", import.meta.url),
+  "utf8",
+);
+const previous = readFileSync(
   new URL("../../../supabase/migrations/0012_legacy_claim_binding.sql", import.meta.url),
   "utf8",
 );
-const readme = readFileSync(new URL("../../../README.md", import.meta.url), "utf8");
-const previous = readFileSync(
-  new URL("../../../supabase/migrations/0007_auth_per_person.sql", import.meta.url),
-  "utf8",
-);
-const claim = sql.slice(
-  sql.indexOf("function private.claim_legacy_history"),
-  sql.indexOf("comment on function private.claim_legacy_history"),
-);
 const sync = sql.slice(sql.indexOf("function public.sync_apply"));
 
-describe("legacy claim binding", () => {
-  test("does not edit 0007 and does not seed an allowed email", () => {
-    assert.match(previous, /create or replace function private\.claim_legacy_history\(p_key text\)/);
-    assert.equal(/allowed_email/.test(previous), false);
-    assert.equal(/set allowed_email\s*=/.test(sql), false);
+describe("legacy claim removal", () => {
+  test("does not edit 0012 and does not recreate claim_legacy_history", () => {
+    assert.match(previous, /create function private\.claim_legacy_history\(p_key text, p_code text default null\)/);
+    assert.match(previous, /create function public\.claim_legacy_history\(p_key text, p_code text default null\)/);
+    assert.equal(/create (or replace )?function (public|private)\.claim_legacy_history/.test(sql), false);
     assert.equal(/insert into private\.legacy_claims/i.test(sql), false);
   });
 
-  test("fails closed unless lower(jwt email) matches lower(allowed_email)", () => {
-    assert.match(sql, /add column allowed_email text/);
-    assert.match(sql, /allowed_email = lower\(allowed_email\)/);
-    assert.match(claim, /security definer/);
-    assert.match(claim, /set search_path = ''/);
-    assert.match(claim, /nullif\(lower\(btrim\(auth\.jwt\(\) ->> 'email'\)\), ''\)/);
-    assert.match(claim, /lower\(v_claim\.allowed_email\)/);
-    assert.match(claim, /raise exception 'claim_not_configured'/);
-    assert.match(claim, /raise exception 'claim_email_mismatch'/);
-    const closed = claim.indexOf("raise exception 'claim_not_configured'");
-    const rewrite = claim.indexOf("insert into public.users");
-    assert.equal(closed >= 0 && rewrite > closed, true);
+  test("revokes and drops every claim_legacy_history overload in public and private", () => {
+    assert.match(sql, /n\.nspname in \('public', 'private'\)/);
+    assert.match(sql, /p\.proname = 'claim_legacy_history'/);
+    assert.match(sql, /revoke all on function %s from public, anon, authenticated, service_role/);
+    assert.match(sql, /drop function %s/);
   });
 
-  test("reads email_confirmed_at from auth.users inside the definer, not from the JWT", () => {
-    assert.match(claim, /select u\.email_confirmed_at/);
-    assert.match(claim, /from auth\.users u/);
-    assert.match(claim, /where u\.id = v_uid/);
-    assert.match(claim, /raise exception 'email_not_confirmed'/);
-    assert.equal(/->>\s*'email_confirmed_at'/.test(sql), false);
-    assert.equal(/email_verified/.test(sql), false);
+  test("empties legacy_claims and revokes it because decline and status still read it", () => {
+    assert.match(sql, /revoke all on table private\.legacy_claims from public, anon, authenticated, service_role/);
+    assert.match(sql, /delete from private\.legacy_claims/);
+    assert.match(sql, /decline_legacy_history/);
+    assert.match(sql, /legacy_history_status/);
+    assert.equal(/drop table (if exists )?private\.legacy_claims/i.test(sql), false);
+    assert.match(sql, /drop trigger if exists legacy_claims_normalize_trg on private\.legacy_claims/);
+    assert.match(sql, /drop function if exists private\.legacy_claims_normalize\(\)/);
+    assert.equal(/drop function if exists private\.optional_numeric/.test(sql), false);
+    assert.equal(/drop function extensions\.crypt/.test(sql), false);
   });
+});
 
-  test("a missing code fails closed and there is no account-only branch", () => {
-    assert.match(sql, /add column claim_code_hash text/);
-    assert.match(claim, /if v_claim\.claim_code_hash is null then/);
-    assert.match(claim, /raise exception 'claim_not_configured'/);
-    assert.match(claim, /octet_length\(p_code\) between 1 and 72/);
-    assert.match(claim, /'invalid_claim_code'/);
-    assert.equal(/elsif[\s\S]{0,240}email_not_confirmed/.test(claim), false);
-    assert.equal(/Pre-created account/.test(sql), false);
-    assert.equal(/leave claim_code_hash null/.test(sql), false);
-    assert.equal(/Deja `claim_code_hash` en null/.test(readme), false);
-    assert.equal(/Traer historial/.test(readme), false);
-    assert.equal(/Historial de Kviedes/.test(readme), false);
-    assert.match(readme, /no muestra una pantalla para traer un historial legado/);
-    assert.equal(/claim_code_hash is not null and v_claim\.claimed_by/.test(claim), false);
-    const hashNull = claim.indexOf("if v_claim.claim_code_hash is null then");
-    const configured = claim.indexOf("raise exception 'claim_not_configured'", hashNull);
-    const rewrite = claim.indexOf("insert into public.users");
-    assert.equal(hashNull >= 0 && configured > hashNull && rewrite > configured, true);
-  });
-
-  test("an expired code returns claim_code_expired after lockout and before the compare", () => {
-    assert.match(sql, /add column claim_code_expires_at timestamptz/);
-    assert.match(
-      sql,
-      /claim_code_hash is not null and claim_code_expires_at is not null/,
-    );
-    assert.match(claim, /claim_code_expires_at <= now\(\)/);
-    assert.match(claim, /return jsonb_build_object\('ok', false, 'error', 'claim_code_expired'\)/);
-    assert.equal(/raise exception 'claim_code_expired'/.test(claim), false);
-    const locked = claim.indexOf("return jsonb_build_object('ok', false, 'error', 'claim_locked')");
-    const expired = claim.indexOf("return jsonb_build_object('ok', false, 'error', 'claim_code_expired')");
-    const compare = claim.indexOf("extensions.crypt(p_code, v_claim.claim_code_hash)");
-    assert.equal(locked >= 0 && expired > locked && compare > expired, true);
-  });
-
-  test("a used code cannot be reused because success clears the hash", () => {
-    const update = claim.slice(claim.indexOf("set\n        claimed_by = v_uid"));
-    const hashClear = update.indexOf("claim_code_hash = null");
-    const expiresClear = update.indexOf("claim_code_expires_at = null");
-    const where = update.indexOf("where legacy_key = p_key");
-    assert.equal(hashClear >= 0 && expiresClear > hashClear && where > expiresClear, true);
-    assert.match(claim, /claimed_by = v_uid/);
-    assert.equal(/claim_code_hash\s*=\s*'/.test(claim), false);
-  });
-
-  test("a wrong code still locks after repeated attempts", () => {
-    assert.match(claim, /extensions\.crypt\(p_code, v_claim\.claim_code_hash\) = v_claim\.claim_code_hash/);
-    assert.match(claim, /'claim_locked'/);
-    assert.match(claim, /claim_code_total_failures >= 20/);
-    assert.match(claim, />= 5 then now\(\) \+ interval '15 minutes'/);
-    assert.match(claim, /p_code text default null/);
-  });
-
-  test("history trigger fires only when the row changes, and delete stays separate", () => {
-    assert.match(
-      sql,
-      /create trigger food_days_history_trg\s+before update on public\.food_days\s+for each row\s+when \(old\.\* is distinct from new\.\*\)\s+execute function public\.food_days_history_capture\(\)/,
-    );
-    assert.match(
-      sql,
-      /create trigger food_days_history_delete_trg\s+before delete on public\.food_days\s+for each row\s+execute function public\.food_days_history_capture\(\)/,
-    );
-    assert.equal(/before update or delete on public\.food_days/.test(sql), false);
-  });
-
-  test("sync_apply rejects oversize food_days and returns foreign ids", () => {
+describe("sync_apply nutrition limits", () => {
+  test("keeps food_days limits, rejected.food_days, and security invoker", () => {
+    assert.match(sync, /security invoker/);
+    assert.match(sync, /set search_path = public/);
     assert.match(sync, /raise exception 'food_days must be an array'/);
     assert.match(sync, /jsonb_array_length\(coalesce\(payload->'food_days', '\[\]'::jsonb\)\) > 5000/);
     assert.match(sync, /raise exception 'too many food_days'/);
@@ -122,9 +52,39 @@ describe("legacy claim binding", () => {
     assert.match(sync, /'other_user'/);
     assert.match(sync, /'foreign_id'/);
     assert.match(sync, /'rejected', jsonb_build_object\('food_days', rejected_food\)/);
-    assert.match(sync, /foreign_fd\.user_id is distinct from v_uid/);
+    assert.match(sync, /revoke all on function public\.sync_apply\(jsonb\) from service_role/);
+    assert.match(sync, /grant execute on function public\.sync_apply\(jsonb\) to authenticated/);
     const limit = sync.indexOf("raise exception 'too many food_days'");
     const write = sync.indexOf("insert into public.food_days");
     assert.equal(limit >= 0 && write > limit, true);
+  });
+
+  test("a null client push does not clear a non-null server goal without a newer clock", () => {
+    assert.match(sql, /add column if not exists targets_updated_at timestamptz/);
+    assert.match(sync, /dest\.protein_target_g is not null then dest\.protein_target_g/);
+    assert.match(sync, /dest\.kcal_target is not null then dest\.kcal_target/);
+    assert.match(sync, /src\.targets_updated_at > dest\.targets_updated_at/);
+    assert.match(sync, /user_row \? 'protein_target_g'/);
+    assert.match(sync, /user_row \? 'kcal_target'/);
+    assert.equal(/when src\.protein_target_g is null then null/.test(sync), false);
+    assert.equal(/when src\.kcal_target is null then null/.test(sync), false);
+    const guard = sync.indexOf("dest.protein_target_g is not null then dest.protein_target_g");
+    const foodWrite = sync.indexOf("insert into public.food_days");
+    assert.equal(guard >= 0 && foodWrite > guard, true);
+  });
+
+  test("rejects non-integers and out-of-range protein, kcal, and weight", () => {
+    assert.match(sync, /raise exception 'protein_target_g must be an integer'/);
+    assert.match(sync, /raise exception 'protein_target_g out of range'/);
+    assert.match(sync, /protein_num < 0 or protein_num > 500/);
+    assert.match(sync, /raise exception 'kcal_target must be an integer'/);
+    assert.match(sync, /raise exception 'kcal_target out of range'/);
+    assert.match(sync, /kcal_num < 0 or kcal_num > 10000/);
+    assert.match(sync, /raise exception 'weight_kg must be an integer'/);
+    assert.match(sync, /raise exception 'weight_kg out of range'/);
+    assert.match(sync, /weight_num < 20 or weight_num > 400/);
+    const check = sync.indexOf("raise exception 'protein_target_g out of range'");
+    const write = sync.indexOf("update public.users as dest");
+    assert.equal(check >= 0 && write > check, true);
   });
 });

@@ -3,7 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { syncGate } from "@/lib/sync/gate";
 import { parseSnapshot, parseTombstones } from "@/lib/sync/payload";
 import { readOwn, writeOwn } from "@/lib/sync/remote";
-import { clearFoodDayLimitError } from "@/lib/sync/rejected";
+import { clearSyncApplyError } from "@/lib/sync/rejected";
 import { missingWorkoutIds } from "@/lib/sync/round";
 
 export const runtime = "nodejs";
@@ -119,7 +119,7 @@ export async function PUT(request: Request) {
   } catch (error) {
     logSyncFailure("write", error);
     const message = error instanceof Error ? error.message : "";
-    const clear = clearFoodDayLimitError(message);
+    const clear = clearSyncApplyError(message);
     if (clear) return json({ ok: false, enabled: true, error: clear }, 400);
     return json({ ok: false, enabled: true, error: "No se pudo guardar en Supabase." }, 502);
   }
