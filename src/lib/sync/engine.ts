@@ -3,7 +3,7 @@
 import { scopeToUser, stitchGym } from "@/lib/auth/scope";
 import { useGymStore } from "@/lib/store";
 import type { GymData } from "@/lib/types";
-import { ackMap, collectTombstones, snapshotsMatch } from "./merge";
+import { ackMap, collectTombstones, snapshotsMatch, usersWithServerTargets } from "./merge";
 import { parseSnapshot, parseTombstones } from "./payload";
 import { prepareSyncSnapshot, serverKeptWorkouts, tombstonesForRound } from "./round";
 import { getSyncUserId, subscribeSyncUser } from "./session-user";
@@ -200,6 +200,15 @@ export function startGymSync() {
         return;
       }
       const ignoreReminders = !remindersFromServer;
+      // Put server goals on the phone before the upload. The payload itself
+      // is `prepared`, which already merged those goals. A newer local edit
+      // keeps its own number.
+      const current = ownSnapshot(userId);
+      const hydratedUsers = usersWithServerTargets(current.users, prepared.snapshot.users);
+      const hydrated = { ...current, users: hydratedUsers };
+      if (!snapshotsMatch(hydrated, current, ignoreReminders)) {
+        applyOwn(hydrated, userId);
+      }
       const remoteDeletes = new Set(remoteTombstones.map((row) => `${row.entity}:${row.id}`));
       const pendingDeletes = prepared.tombstones.filter((row) => !remoteDeletes.has(`${row.entity}:${row.id}`));
       const needsPush =

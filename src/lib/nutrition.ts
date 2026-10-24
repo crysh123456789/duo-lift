@@ -60,16 +60,43 @@ export function proteinTargetG(weightKg: number) {
   return Math.round(weightKg * 1.8);
 }
 
-/** Bounds stored by sync_apply. Out of range is treated as unset. */
-export const PROTEIN_TARGET_MAX = 1000;
-export const KCAL_TARGET_MAX = 20000;
+/** Bounds stored by sync_apply. Out of range is treated as unset on read. */
+export const PROTEIN_TARGET_MIN = 0;
+export const PROTEIN_TARGET_MAX = 500;
+export const KCAL_TARGET_MIN = 0;
+export const KCAL_TARGET_MAX = 10000;
+export const WEIGHT_KG_MIN = 20;
+export const WEIGHT_KG_MAX = 400;
 
-export function clampDailyTarget(value: unknown, max: number): number | null {
+export function clampDailyTarget(value: unknown, max: number, min = PROTEIN_TARGET_MIN): number | null {
   if (value == null || value === "") return null;
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return null;
   const rounded = Math.round(parsed);
-  if (rounded < 1 || rounded > max) return null;
+  if (rounded < min || rounded > max) return null;
+  return rounded;
+}
+
+/**
+ * Body weight written by sync_apply. Null stays unset.
+ * One decimal, then clamped to 20..400 so a phone value cannot fail the batch.
+ */
+export function syncBodyWeightKg(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const rounded = Math.round(value * 10) / 10;
+  if (rounded < WEIGHT_KG_MIN) return WEIGHT_KG_MIN;
+  if (rounded > WEIGHT_KG_MAX) return WEIGHT_KG_MAX;
+  return rounded;
+}
+
+/** Editor write. Empty stays empty. A typed number outside the range is clipped, not cleared. */
+export function clipDailyTarget(value: unknown, max: number, min = PROTEIN_TARGET_MIN): number | null {
+  if (value == null || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  const rounded = Math.round(parsed);
+  if (rounded < min) return min;
+  if (rounded > max) return max;
   return rounded;
 }
 
@@ -79,7 +106,7 @@ export function manualProteinGoal(user: { proteinTargetG?: number | null } | nul
 }
 
 export function manualKcalGoal(user: { kcalTarget?: number | null } | null | undefined): number | null {
-  return clampDailyTarget(user?.kcalTarget, KCAL_TARGET_MAX);
+  return clampDailyTarget(user?.kcalTarget, KCAL_TARGET_MAX, KCAL_TARGET_MIN);
 }
 
 /** Protein grams from body weight. There is no kcal formula here. */

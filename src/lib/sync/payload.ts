@@ -1,4 +1,11 @@
-import { KCAL_TARGET_MAX, PROTEIN_TARGET_MAX, clampDailyTarget } from "@/lib/nutrition";
+import {
+  KCAL_TARGET_MAX,
+  KCAL_TARGET_MIN,
+  PROTEIN_TARGET_MAX,
+  PROTEIN_TARGET_MIN,
+  clipDailyTarget,
+  syncBodyWeightKg,
+} from "@/lib/nutrition";
 import type { GymData } from "@/lib/types";
 import { canonicalize, snapshotFromState } from "./snapshot";
 import { isTombstoneEntity, type Tombstone, type TombstoneEntity } from "./types";
@@ -41,6 +48,12 @@ function validTombstoneId(entity: TombstoneEntity, id: string): boolean {
   return SYNC_ID.test(id);
 }
 
+function laterStamp(left?: string | null, right?: string | null): string | null {
+  if (!left) return right ?? null;
+  if (!right) return left;
+  return left > right ? left : right;
+}
+
 /** Snake-case body for `public.sync_apply`. Child rows keep the snapshot's duo id. */
 export function toSyncPayload(data: GymData, tombstones: Tombstone[]) {
   const snapshot = canonicalize(data);
@@ -54,19 +67,32 @@ export function toSyncPayload(data: GymData, tombstones: Tombstone[]) {
     },
     users: snapshot.users
       .filter((row) => SYNC_ID.test(row.id))
-      .map((row) => ({
-        id: row.id,
-        email: row.email,
-        display_name: row.displayName,
-        avatar_hue: row.avatarHue,
-        unit_system: row.unitSystem,
-        height_cm: row.heightCm,
-        weight_kg: row.weightKg,
-        nutrition_goal: row.nutritionGoal,
-        protein_target_g: clampDailyTarget(row.proteinTargetG, PROTEIN_TARGET_MAX),
-        kcal_target: clampDailyTarget(row.kcalTarget, KCAL_TARGET_MAX),
-        created_at: row.createdAt,
-      })),
+      .map((row) => {
+        const proteinTouched = Boolean(row.proteinTargetUpdatedAt);
+        const kcalTouched = Boolean(row.kcalTargetUpdatedAt);
+        const protein = clipDailyTarget(row.proteinTargetG, PROTEIN_TARGET_MAX, PROTEIN_TARGET_MIN);
+        const kcal = clipDailyTarget(row.kcalTarget, KCAL_TARGET_MAX, KCAL_TARGET_MIN);
+        const user: Record<string, unknown> = {
+          id: row.id,
+          email: row.email,
+          display_name: row.displayName,
+          avatar_hue: row.avatarHue,
+          unit_system: row.unitSystem,
+          height_cm: row.heightCm,
+          weight_kg: syncBodyWeightKg(row.weightKg),
+          nutrition_goal: row.nutritionGoal,
+          created_at: row.createdAt,
+        };
+        // Untouched nulls are omitted so they cannot clear a server goal.
+        if (proteinTouched || protein != null) user.protein_target_g = protein;
+        if (kcalTouched || kcal != null) user.kcal_target = kcal;
+        const stamp = laterStamp(
+          proteinTouched ? row.proteinTargetUpdatedAt : null,
+          kcalTouched ? row.kcalTargetUpdatedAt : null,
+        );
+        if (stamp) user.targets_updated_at = stamp;
+        return user;
+      }),
     members: snapshot.members
       .filter((row) => row.duoId === duoId && SYNC_ID.test(row.userId))
       .map((row) => ({

@@ -36,7 +36,7 @@ export async function readOwn(
       client
         .from("users")
         .select(
-          "id, email, display_name, avatar_hue, unit_system, height_cm, weight_kg, nutrition_goal, protein_target_g, kcal_target, created_at",
+          "id, email, display_name, avatar_hue, unit_system, height_cm, weight_kg, nutrition_goal, protein_target_g, kcal_target, targets_updated_at, created_at",
         )
         .eq("id", userId),
     ),

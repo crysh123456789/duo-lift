@@ -190,31 +190,55 @@ describe("mergeRemoteSnapshot", () => {
     const local = gym();
     local.users[0] = { ...local.users[0], proteinTargetG: null, kcalTarget: null };
     const remote = gym();
-    remote.users[0] = { ...remote.users[0], proteinTargetG: 120, kcalTarget: 2500 };
+    remote.users[0] = {
+      ...remote.users[0],
+      proteinTargetG: 120,
+      kcalTarget: 2500,
+      targetsUpdatedAt: "2026-10-24T15:00:00.000Z",
+    };
+    const saved = gym();
+    saved.users[0] = { ...saved.users[0], proteinTargetG: 120, kcalTarget: 2500 };
     const merged = mergeRemoteSnapshot(local, remote, [], {
       seed: gym(),
+      ack: ackMap(saved),
       preferLocal: true,
       remindersFromServer: false,
     });
     assert.equal(merged.users[0].proteinTargetG, 120);
     assert.equal(merged.users[0].kcalTarget, 2500);
+    const payload = toSyncPayload(merged, []);
+    assert.equal(payload.users[0].protein_target_g, 120);
+    assert.equal(payload.users[0].kcal_target, 2500);
+    assert.equal(Object.hasOwn(payload.users[0], "targets_updated_at"), false);
   });
 
-  test("clearing a goal this phone already saved is not refilled from the server", () => {
-    const saved = gym();
-    saved.users[0] = { ...saved.users[0], proteinTargetG: 120, kcalTarget: 2500 };
+  test("a newer explicit clear is not refilled from the server", () => {
     const local = gym();
-    local.users[0] = { ...local.users[0], proteinTargetG: null, kcalTarget: null };
+    local.users[0] = {
+      ...local.users[0],
+      proteinTargetG: null,
+      kcalTarget: null,
+      proteinTargetUpdatedAt: "2026-10-24T16:00:00.000Z",
+      kcalTargetUpdatedAt: "2026-10-24T16:00:00.000Z",
+    };
     const remote = gym();
-    remote.users[0] = { ...remote.users[0], proteinTargetG: 120, kcalTarget: 2500 };
+    remote.users[0] = {
+      ...remote.users[0],
+      proteinTargetG: 120,
+      kcalTarget: 2500,
+      targetsUpdatedAt: "2026-10-24T15:00:00.000Z",
+    };
     const merged = mergeRemoteSnapshot(local, remote, [], {
       seed: gym(),
-      ack: ackMap(saved),
       preferLocal: false,
       remindersFromServer: true,
     });
     assert.equal(merged.users[0].proteinTargetG, null);
     assert.equal(merged.users[0].kcalTarget, null);
+    const payload = toSyncPayload(merged, []);
+    assert.equal(payload.users[0].protein_target_g, null);
+    assert.equal(payload.users[0].kcal_target, null);
+    assert.equal(payload.users[0].targets_updated_at, "2026-10-24T16:00:00.000Z");
   });
 
   test("a server-closed session replaces a stale open copy", () => {

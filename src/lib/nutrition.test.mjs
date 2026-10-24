@@ -120,7 +120,7 @@ describe("manual nutrition goals", () => {
   test("diary uses the manual protein goal and ignores weight", () => {
     assert.equal(manualProteinGoal({ proteinTargetG: 90, weightKg: 60 }), 90);
     assert.equal(manualProteinGoal({ weightKg: 60 }), null);
-    assert.equal(manualProteinGoal({ proteinTargetG: 0, weightKg: 60 }), null);
+    assert.equal(manualProteinGoal({ proteinTargetG: 0, weightKg: 60 }), 0);
     assert.equal(proteinTargetG(60), 108);
     const day = dayTotals(breakfastLog());
     assert.equal(formatTotals(day, manualProteinGoal({ weightKg: 60 })), "P 28/— · C 51 · G 21 · 505 kcal");
@@ -161,9 +161,27 @@ describe("manual nutrition goals", () => {
     const payload = toSyncPayload(gym({ users: [user] }), []);
     assert.equal(payload.users[0].protein_target_g, 90);
     assert.equal(payload.users[0].kcal_target, 2200);
-    const cleared = toSyncPayload(gym({ users: [cristian] }), []);
+    const untouched = toSyncPayload(gym({ users: [cristian] }), []);
+    assert.equal(Object.hasOwn(untouched.users[0], "protein_target_g"), false);
+    assert.equal(Object.hasOwn(untouched.users[0], "kcal_target"), false);
+    assert.equal(Object.hasOwn(untouched.users[0], "targets_updated_at"), false);
+    const cleared = toSyncPayload(
+      gym({
+        users: [
+          {
+            ...cristian,
+            proteinTargetG: null,
+            kcalTarget: null,
+            proteinTargetUpdatedAt: "2026-10-24T16:00:00.000Z",
+            kcalTargetUpdatedAt: "2026-10-24T16:00:00.000Z",
+          },
+        ],
+      }),
+      [],
+    );
     assert.equal(cleared.users[0].protein_target_g, null);
     assert.equal(cleared.users[0].kcal_target, null);
+    assert.equal(cleared.users[0].targets_updated_at, "2026-10-24T16:00:00.000Z");
     const { data } = gymFromRows({
       duo: { id: "duo-1", name: "Duo Lift", invite_code: "GYM2", created_at: "2026-01-01T00:00:00.000Z" },
       users: [
@@ -178,6 +196,7 @@ describe("manual nutrition goals", () => {
           nutrition_goal: "surplus_muscle",
           protein_target_g: "90",
           kcal_target: "2200",
+          targets_updated_at: "2026-10-24T15:00:00.000Z",
           created_at: "2026-01-01T00:00:00.000Z",
         },
       ],
@@ -194,6 +213,29 @@ describe("manual nutrition goals", () => {
     });
     assert.equal(data.users[0].proteinTargetG, 90);
     assert.equal(data.users[0].kcalTarget, 2200);
+    assert.equal(data.users[0].targetsUpdatedAt, "2026-10-24T15:00:00.000Z");
+  });
+
+  test("the sync payload rounds weight to 1 decimal and clamps targets before send", () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const sent = (patch) =>
+      toSyncPayload(gym({ users: [{ ...cristian, id, ...patch }] }), []).users[0];
+    assert.equal(sent({ weightKg: 60.4 }).weight_kg, 60.4);
+    assert.equal(sent({ weightKg: 60.44 }).weight_kg, 60.4);
+    assert.equal(sent({ weightKg: 10 }).weight_kg, 20);
+    assert.equal(sent({ weightKg: 400.5 }).weight_kg, 400);
+    assert.notEqual(sent({ weightKg: 10 }).weight_kg, 10);
+    assert.notEqual(sent({ weightKg: 400.5 }).weight_kg, 400.5);
+    const clipped = sent({
+      proteinTargetG: 900.6,
+      kcalTarget: 25000.4,
+      weightKg: 60.4,
+      proteinTargetUpdatedAt: "2026-10-24T16:00:00.000Z",
+      kcalTargetUpdatedAt: "2026-10-24T16:00:00.000Z",
+    });
+    assert.equal(clipped.protein_target_g, 500);
+    assert.equal(clipped.kcal_target, 10000);
+    assert.equal(clipped.weight_kg, 60.4);
   });
 });
 

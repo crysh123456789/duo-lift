@@ -17,7 +17,15 @@ import type {
   SetLog,
   User,
 } from "./types";
-import { KCAL_TARGET_MAX, PROTEIN_TARGET_MAX, clampDailyTarget, todayStamp, upsertFoodDay } from "./nutrition";
+import {
+  KCAL_TARGET_MAX,
+  KCAL_TARGET_MIN,
+  PROTEIN_TARGET_MAX,
+  PROTEIN_TARGET_MIN,
+  clipDailyTarget,
+  todayStamp,
+  upsertFoodDay,
+} from "./nutrition";
 import {
   atLocalStamp,
   isValidStamp,
@@ -102,8 +110,17 @@ export const useGymStore = create<GymStore>()(
           users: state.users.map((u) => {
             if (u.id !== userId) return u;
             const next = { ...u, ...patch };
-            if ("proteinTargetG" in patch) next.proteinTargetG = clampDailyTarget(patch.proteinTargetG, PROTEIN_TARGET_MAX);
-            if ("kcalTarget" in patch) next.kcalTarget = clampDailyTarget(patch.kcalTarget, KCAL_TARGET_MAX);
+            if ("proteinTargetG" in patch || "kcalTarget" in patch) {
+              const stamp = new Date().toISOString();
+              if ("proteinTargetG" in patch) {
+                next.proteinTargetG = clipDailyTarget(patch.proteinTargetG, PROTEIN_TARGET_MAX, PROTEIN_TARGET_MIN);
+                next.proteinTargetUpdatedAt = stamp;
+              }
+              if ("kcalTarget" in patch) {
+                next.kcalTarget = clipDailyTarget(patch.kcalTarget, KCAL_TARGET_MAX, KCAL_TARGET_MIN);
+                next.kcalTargetUpdatedAt = stamp;
+              }
+            }
             return next;
           }),
         })),

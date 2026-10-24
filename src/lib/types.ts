@@ -70,6 +70,12 @@ export type User = {
   proteinTargetG?: number | null;
   /** Manual kilocalories per day. Null until the person sets it. Independent of weight. */
   kcalTarget?: number | null;
+  /** Server clock for the last explicit goal write or clear. */
+  targetsUpdatedAt?: string | null;
+  /** This phone edited protein. Stays off the wire comparison with the server row. */
+  proteinTargetUpdatedAt?: string | null;
+  /** This phone edited kilocalories. Stays off the wire comparison with the server row. */
+  kcalTargetUpdatedAt?: string | null;
   createdAt: string;
 };
 

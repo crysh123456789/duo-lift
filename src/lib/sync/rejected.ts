@@ -5,6 +5,19 @@ export const FOOD_DAY_LIMIT_ERRORS = [
   "food_days must be an array",
 ] as const;
 
+export const TARGET_LIMIT_ERRORS = [
+  "protein_target_g must be an integer",
+  "protein_target_g out of range",
+  "kcal_target must be an integer",
+  "kcal_target out of range",
+  "weight_kg must have at most 1 decimal",
+  "weight_kg out of range",
+  "targets_updated_at must be a timestamp",
+  "targets_updated_at is more than 5 minutes in the future",
+] as const;
+
+export const SYNC_APPLY_INPUT_ERRORS = [...FOOD_DAY_LIMIT_ERRORS, ...TARGET_LIMIT_ERRORS] as const;
+
 export type FoodDayRejectReason = "other_user" | "foreign_id";
 
 export type RejectedFoodDay = {
@@ -47,4 +60,9 @@ export function rejectedFoodDays(source: unknown): RejectedFoodDay[] {
 /** Returns the stable limit phrase, or null when the failure is something else. */
 export function clearFoodDayLimitError(message: string): string | null {
   return FOOD_DAY_LIMIT_ERRORS.find((item) => message.includes(item)) ?? null;
+}
+
+/** Food-day limits and nutrition target limits, in that order. */
+export function clearSyncApplyError(message: string): string | null {
+  return SYNC_APPLY_INPUT_ERRORS.find((item) => message.includes(item)) ?? null;
 }
