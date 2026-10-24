@@ -16,6 +16,8 @@ export const FOOD_DAY_REJECTED_LABEL = "Días de otra cuenta no se subieron · s
  */
 let phase: SyncPhase = "local";
 let foodDayRejection = false;
+/** True after the first sync round of this page load settles, success or not. */
+let serverHydrated = false;
 const listeners = new Set<() => void>();
 
 export function getSyncPhase(): SyncPhase {
@@ -35,6 +37,17 @@ export function getFoodDayRejection(): boolean {
 export function setFoodDayRejection(active: boolean) {
   if (foodDayRejection === active) return;
   foodDayRejection = active;
+  for (const listener of listeners) listener();
+}
+
+export function isServerHydrated(): boolean {
+  return serverHydrated;
+}
+
+/** The phone may show training counts and open sessions. Later rounds do not hide them again. */
+export function markServerHydrated() {
+  if (serverHydrated) return;
+  serverHydrated = true;
   for (const listener of listeners) listener();
 }
 

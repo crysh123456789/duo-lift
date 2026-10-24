@@ -304,11 +304,21 @@ export function formatMacro(value: number): string {
   return String(Math.round(value));
 }
 
-/** `P 28/108 · C 51 · G 21 · 505 kcal`. Omit `goal` for a single meal. */
-export function formatTotals(totals: MacroTotals, goal?: number | null): string {
+/** `P 28/108 · C 51 · G 21 · 505/2200 kcal`. Omit `goal` for a single meal. */
+export function formatTotals(totals: MacroTotals, goal?: number | null, kcalGoal?: number | null): string {
   const protein = formatMacro(totals.proteinG);
   const p = goal === undefined ? `P ${protein}` : `P ${protein}/${goal == null ? "—" : goal}`;
-  return `${p} · C ${formatMacro(totals.carbsG)} · G ${formatMacro(totals.fatG)} · ${formatMacro(totals.kcal)} kcal`;
+  const kcal = formatMacro(totals.kcal);
+  const energy = typeof kcalGoal === "number" ? `${kcal}/${kcalGoal} kcal` : `${kcal} kcal`;
+  return `${p} · C ${formatMacro(totals.carbsG)} · G ${formatMacro(totals.fatG)} · ${energy}`;
+}
+
+/** Day line. Protein and kcal goals are the manual targets, never the weight formula. */
+export function formatDayTotals(
+  totals: MacroTotals,
+  user: { proteinTargetG?: number | null; kcalTarget?: number | null } | null | undefined,
+): string {
+  return formatTotals(totals, manualProteinGoal(user), manualKcalGoal(user));
 }
 
 export function mealSummary(value: unknown): string {

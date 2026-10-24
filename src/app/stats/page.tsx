@@ -43,6 +43,42 @@ const LIFTS = [
   { id: EX.prensa, name: "Prensa" },
 ];
 
+/** Recharts skips a 0 bar. A hair above 0 plus the shape keeps the day visible. */
+function plotZeroSessions(row: Record<string, string | number>, userIds: string[]) {
+  const next = { ...row };
+  for (const id of userIds) {
+    if (Number(row[`${id}__zero`] ?? 0) === 1) next[id] = 0.0001;
+  }
+  return next;
+}
+
+/** A 0 kg session still gets a sliver so the day is visible on the axis. */
+function SessionBar(props: {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  fill?: string;
+  payload?: Record<string, string | number>;
+  dataKey?: string | number;
+}) {
+  const x = props.x ?? 0;
+  const y = props.y ?? 0;
+  const width = props.width ?? 0;
+  const height = props.height ?? 0;
+  const fill = props.fill ?? COLORS[0];
+  const key = String(props.dataKey ?? "");
+  const payload = props.payload ?? {};
+  const value = Number(payload[key] ?? 0);
+  const zero = Number(payload[`${key}__zero`] ?? 0) === 1;
+  if (width <= 0 || (!zero && value <= 0)) return <g />;
+  const mark = 6;
+  const h = zero ? Math.max(height, mark) : height;
+  const top = zero ? y + height - h : y;
+  if (h <= 0) return <g />;
+  return <rect x={x} y={top} width={width} height={h} rx={4} fill={fill} />;
+}
+
 export default function StatsPage() {
   const data = useOwnGym();
   const days = dailyVolume(data, 14);
@@ -121,25 +157,48 @@ export default function StatsPage() {
         <p className="mb-3 text-xs text-muted">
           Todas las fechas con sesión, también si sigue sin cerrar.
         </p>
-        <div className="h-64 rounded-2xl border border-line bg-surface p-3">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={days}>
-              <CartesianGrid stroke="#2d3224" vertical={false} />
-              <XAxis dataKey="label" stroke="#9aa186" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#9aa186" fontSize={11} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Legend />
-              {data.users.map((user, i) => (
-                <Bar
-                  key={user.id}
-                  dataKey={user.id}
-                  name={personName(user) || "Tú"}
-                  fill={COLORS[i] ?? COLORS[0]}
-                  radius={[4, 4, 0, 0]}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="h-64 overflow-x-auto rounded-2xl border border-line bg-surface p-3">
+          {days.length === 0 ? (
+            <p className="text-sm text-muted">Todavía no hay sesiones.</p>
+          ) : (
+            <div className="h-full" style={{ width: "100%", minWidth: days.length * 72 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={days.map((row) => plotZeroSessions(row, data.users.map((user) => user.id)))}>
+                  <CartesianGrid stroke="#2d3224" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    stroke="#9aa186"
+                    fontSize={11}
+                    interval={0}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis stroke="#9aa186" fontSize={11} tickLine={false} axisLine={false} width={36} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value, name, item) => {
+                      const key = String(item?.dataKey ?? "");
+                      const zero = Number(item?.payload?.[`${key}__zero`] ?? 0) === 1;
+                      const kg = zero ? 0 : Number(value ?? 0);
+                      return [`${kg} kg`, name];
+                    }}
+                  />
+                  <Legend />
+                  {data.users.map((user, i) => (
+                    <Bar
+                      key={user.id}
+                      dataKey={user.id}
+                      name={personName(user) || "Tú"}
+                      fill={COLORS[i] ?? COLORS[0]}
+                      radius={[4, 4, 0, 0]}
+                      minPointSize={6}
+                      shape={(props) => <SessionBar {...props} />}
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
       </section>
 

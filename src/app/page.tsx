@@ -1,39 +1,61 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { UnclosedSessionCard } from "@/components/unclosed-session";
 import { Panel } from "@/components/ui";
 import { PageTitle } from "@/components/page-title";
 import { whenLabel, relativeTime } from "@/lib/format";
 import { foodDayFor, nextMealPrompt, todayStamp } from "@/lib/nutrition";
-import { formatKg, lastWorkout, personTrainingStats, sessionSummary } from "@/lib/metrics";
+import { formatKg, homeDashboardState, lastWorkout, personTrainingStats, sessionSummary } from "@/lib/metrics";
 import { personName } from "@/lib/people";
 import { groupDuoSessions } from "@/lib/session-groups";
 import { DATE_UPDATED, homeTrainCta, staleOpenWorkouts } from "@/lib/session-date";
 import { splitHeadline } from "@/lib/split";
 import { useOwnGym } from "@/lib/auth/use-own-gym";
+import { isServerHydrated, subscribeSyncPhase } from "@/lib/sync/status";
 import { workoutVolume } from "@/lib/workout-tree";
 
 export default function DashboardPage() {
   const data = useOwnGym();
+  const hydrated = useSyncExternalStore(subscribeSyncPhase, isServerHydrated, () => false);
   const [dateNotice, setDateNotice] = useState("");
   const me = data.users.find((u) => u.id === data.activeUserId);
   const myName = personName(me) || "tú";
-  const stale = staleOpenWorkouts(data.workouts, data.activeUserId);
-  const cta = homeTrainCta(data.workouts, data.activeUserId);
+  const openSessions = staleOpenWorkouts(data.workouts, data.activeUserId);
+  const activeStats = personTrainingStats(data, data.activeUserId);
+  const home = homeDashboardState(hydrated, {
+    completed: activeStats.completed,
+    volume: activeStats.volume,
+    weekCompleted: activeStats.weekCompleted,
+    weekVolume: activeStats.weekVolume,
+    stale: openSessions,
+  });
+  const stale = home.stale;
+  const cta = home.ready ? homeTrainCta(data.workouts, data.activeUserId) : null;
   const { kicker } = splitHeadline(data, data.activeUserId);
 
   const cards = data.users.map((user) => {
     const last = lastWorkout(data, user.id);
-    const stats = personTrainingStats(data, user.id);
+    const stats = user.id === data.activeUserId ? activeStats : personTrainingStats(data, user.id);
+    const figures =
+      user.id === data.activeUserId
+        ? home
+        : homeDashboardState(hydrated, {
+            completed: stats.completed,
+            volume: stats.volume,
+            weekCompleted: stats.weekCompleted,
+            weekVolume: stats.weekVolume,
+            stale: [],
+          });
     return {
       user,
       name: personName(user),
-      sessions: stats.completed,
-      volume: stats.volume,
-      weekCompleted: stats.weekCompleted,
-      weekVolume: stats.weekVolume,
+      sessions: figures.completed,
+      volume: figures.volume,
+      weekCompleted: figures.weekCompleted,
+      weekVolume: figures.weekVolume,
+      ready: figures.ready,
       last,
       summary: last ? sessionSummary(data, last.id) : "Sin entrenos aún",
     };
@@ -84,21 +106,26 @@ export default function DashboardPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="font-mono text-3xl tabular-nums">{card.sessions}</p>
+                <p className="font-mono text-3xl tabular-nums">{card.sessions ?? "—"}</p>
                 <p className="text-xs text-muted">entrenos</p>
               </div>
               <div>
-                <p className="font-mono text-3xl tabular-nums">{formatKg(card.volume)}</p>
+                <p className="font-mono text-3xl tabular-nums">
+                  {card.volume == null ? "—" : formatKg(card.volume)}
+                </p>
                 <p className="text-xs text-muted">kg de volumen</p>
               </div>
             </div>
             <p className="mt-3 text-xs text-muted">
-              Esta semana: {card.weekCompleted} entrenos · {formatKg(card.weekVolume)} kg
+              Esta semana: {card.weekCompleted ?? "—"} entrenos ·{" "}
+              {card.weekVolume == null ? "—" : formatKg(card.weekVolume)} kg
             </p>
             <p className="mt-4 text-sm text-muted">
-              {card.last
-                ? `Último ${relativeTime(card.last.startedAt)} · ${card.summary}`
-                : card.summary}
+              {card.ready
+                ? card.last
+                  ? `Último ${relativeTime(card.last.startedAt)} · ${card.summary}`
+                  : card.summary
+                : "Sincronizando…"}
             </p>
           </Panel>
         ))}

@@ -4,6 +4,8 @@ import {
   FOOD_DAY_REJECTED_LABEL,
   SYNC_ERROR_LABEL,
   SYNC_ERROR_LABEL_SHORT,
+  isServerHydrated,
+  markServerHydrated,
   syncPhaseLabel,
 } from "./status.ts";
 
@@ -16,6 +18,12 @@ describe("sync pill labels", () => {
     assert.equal(syncPhaseLabel("error"), "No se pudo subir · datos seguros en el teléfono");
     assert.equal(SYNC_ERROR_LABEL, syncPhaseLabel("error"));
     assert.equal(SYNC_ERROR_LABEL_SHORT, "Error · reintentar");
+  });
+
+  test("training figures stay hidden until the first round settles", () => {
+    assert.equal(isServerHydrated(), false);
+    markServerHydrated();
+    assert.equal(isServerHydrated(), true);
   });
 
   test("does not say the history was cleared", () => {
