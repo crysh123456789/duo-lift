@@ -22,6 +22,24 @@ Supabase Auth (correo y contraseña) es la identidad. Cada cuenta ve solo sus en
 
 En el primer inicio, si queda historial legado sin reclamar, la persona elige Historial de Cristian, Historial de Kviedes o Empezar limpio. Esa elección la escribe el RPC `claim_legacy_history` / `decline_legacy_history`: marca `private.legacy_claims.claimed_by` solo cuando está vacío. Una segunda cuenta recibe `already_claimed`. La interfaz no puede reclamar dos veces.
 
+`allowed_email` y `claim_code_hash` salen vacíos en `0012_legacy_claim_binding.sql`. Cualquiera de los dos en null cierra el reclamo (`claim_not_configured`). No hay vía sin código. El correo se compara en minúsculas: `lower(auth.jwt()->>'email') = lower(allowed_email)`. La confirmación no sale del JWT: `private.claim_legacy_history` es `security definer` con `search_path = ''` y lee `auth.users.email_confirmed_at`. Sin esa marca la respuesta es `email_not_confirmed`.
+
+El código es obligatorio y de un solo uso. Se entrega en privado. No se escribe en el repo, en el chat, ni en un ticket. En el SQL editor, como postgres, sustituye el código solo en esa sesión y guarda el hash. Caduca a las 24 horas (`claim_code_expires_at`). Si falta la caducidad, el CHECK no deja guardar el hash.
+
+```sql
+update private.legacy_claims
+set
+  allowed_email = lower('persona@ejemplo.com'),
+  claim_code_hash = extensions.crypt(:one_time_code, extensions.gen_salt('bf')),
+  claim_code_expires_at = now() + interval '24 hours',
+  claim_code_attempts = 0,
+  claim_code_total_failures = 0,
+  claim_code_locked_until = null
+where legacy_key = 'kviedes';
+```
+
+`:one_time_code` no es un secreto de este archivo: es el valor que operaciones pega en el editor y no vuelve a copiar. Máximo 72 bytes (bcrypt). La persona lo escribe en Traer historial (`p_code`). Un fallo suma intento: 5 bloquean 15 minutos; 20 bloquean hasta que operaciones ponga los contadores en 0 y `claim_code_locked_until` en null. Caducado responde `claim_code_expired` y no mueve filas. Un reclamo correcto borra `claim_code_hash` y `claim_code_expires_at`, así que el mismo código no sirve otra vez. Repite el `update` para `cristian` con otro correo y otro código.
+
 En Authentication → Providers → Email, desactiva **Confirm email** para que Crear cuenta abra la sesión. Si queda activo, la app pide revisar el correo. Ese interruptor es un paso de operaciones aparte del enlace de recuperación.
 
 `/forgot` pide el enlace y `/reset` guarda la contraseña nueva. El `redirectTo` está fijado a `https://duo-lift-gamma.vercel.app/reset` (nunca localhost). En Authentication → URL Configuration, Site URL tiene que ser `https://duo-lift-gamma.vercel.app` y Redirect URLs tiene que permitir `https://duo-lift-gamma.vercel.app/reset`. El texto de éxito es el mismo si ese correo no tiene cuenta.

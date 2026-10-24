@@ -3,6 +3,8 @@ export type SyncPhase = "local" | "offline" | "syncing" | "saved" | "error";
 /** Shown when the long error line does not fit in the header. */
 export const SYNC_ERROR_LABEL = "No se pudo subir · datos seguros en el teléfono";
 export const SYNC_ERROR_LABEL_SHORT = "Error · reintentar";
+/** Shown after a successful round that refused another account's food-day ids. */
+export const FOOD_DAY_REJECTED_LABEL = "Días de otra cuenta no se subieron · siguen en el teléfono";
 
 /**
  * Header pill. Local history is never described as lost or cleared.
@@ -13,6 +15,7 @@ export const SYNC_ERROR_LABEL_SHORT = "Error · reintentar";
  * `error`     the last attempt failed; the phone log was kept
  */
 let phase: SyncPhase = "local";
+let foodDayRejection = false;
 const listeners = new Set<() => void>();
 
 export function getSyncPhase(): SyncPhase {
@@ -22,6 +25,16 @@ export function getSyncPhase(): SyncPhase {
 export function setSyncPhase(next: SyncPhase) {
   if (phase === next) return;
   phase = next;
+  for (const listener of listeners) listener();
+}
+
+export function getFoodDayRejection(): boolean {
+  return foodDayRejection;
+}
+
+export function setFoodDayRejection(active: boolean) {
+  if (foodDayRejection === active) return;
+  foodDayRejection = active;
   for (const listener of listeners) listener();
 }
 

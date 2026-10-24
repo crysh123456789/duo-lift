@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PageTitle } from "@/components/page-title";
-import { Button, Panel } from "@/components/ui";
+import { Button, Field, Panel } from "@/components/ui";
 import { LEGACY_HISTORIES, type HistoryChoice } from "@/lib/auth/constants";
-import { claimErrorMessage } from "@/lib/auth/errors";
+import { claimErrorMessage, claimRpcMessage } from "@/lib/auth/errors";
 import { applyAccountLocally, type AuthLike } from "@/lib/auth/enter";
 import { bumpAuthEpoch, setAuthPhase } from "@/lib/auth/phase";
 import { profileFromAuthUser } from "@/lib/auth/profile";
@@ -21,6 +21,7 @@ export default function ClaimPage() {
   const [pending, setPending] = useState<HistoryChoice | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState("");
 
   useEffect(() => {
     const supabase = createBrowserSupabaseClient();
@@ -59,10 +60,14 @@ export default function ClaimPage() {
     const result =
       pending === "clean"
         ? await supabase.rpc("decline_legacy_history")
-        : await supabase.rpc("claim_legacy_history", { p_key: pending });
-    if (result.error) {
+        : await supabase.rpc("claim_legacy_history", {
+            p_key: pending,
+            p_code: code.trim() || null,
+          });
+    const failure = claimRpcMessage(result);
+    if (failure) {
       setBusy(false);
-      setError(claimErrorMessage(result.error));
+      setError(failure);
       return;
     }
     const profile = profileFromAuthUser(user);
@@ -104,6 +109,20 @@ export default function ClaimPage() {
                 : (LEGACY_HISTORIES.find((row) => row.key === pending)?.label ?? "Ese historial")}
               . Solo se puede una vez; no se puede deshacer.
             </p>
+            {pending !== "clean" ? (
+              <Field label="Código de un solo uso">
+                <input
+                  type="password"
+                  autoComplete="one-time-code"
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 outline-none focus:border-accent"
+                />
+                <span className="mt-1 block text-xs text-muted">
+                  Obligatorio. Caduca a las 24 horas. Vacío cuenta como un intento.
+                </span>
+              </Field>
+            ) : null}
             {error ? <p className="text-sm text-danger">{error}</p> : null}
             <Button variant="primary" className="w-full" disabled={busy} onClick={() => void confirm()}>
               {busy ? "Guardando…" : "Confirmar"}

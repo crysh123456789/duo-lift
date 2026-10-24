@@ -1,0 +1,50 @@
+/** Clear errors raised by sync_apply before it writes. */
+export const FOOD_DAY_LIMIT_ERRORS = [
+  "too many food_days",
+  "food_days payload too large",
+  "food_days must be an array",
+] as const;
+
+export type FoodDayRejectReason = "other_user" | "foreign_id";
+
+export type RejectedFoodDay = {
+  id: string;
+  date: string | null;
+  reason: FoodDayRejectReason;
+};
+
+function rowsOf(source: unknown): unknown[] {
+  if (!source || typeof source !== "object") return [];
+  const body = source as { rejected?: unknown; food_days?: unknown };
+  const rejected = body.rejected;
+  if (rejected && typeof rejected === "object") {
+    const foodDays = (rejected as { food_days?: unknown }).food_days;
+    if (Array.isArray(foodDays)) return foodDays;
+  }
+  if (Array.isArray(body.food_days)) return body.food_days;
+  return [];
+}
+
+/** Food days sync_apply refused because the id belongs to someone else. */
+export function rejectedFoodDays(source: unknown): RejectedFoodDay[] {
+  const out: RejectedFoodDay[] = [];
+  for (const row of rowsOf(source)) {
+    if (!row || typeof row !== "object") continue;
+    const id = (row as { id?: unknown }).id;
+    const reason = (row as { reason?: unknown }).reason;
+    const date = (row as { date?: unknown }).date;
+    if (typeof id !== "string" || id.length === 0) continue;
+    if (reason !== "other_user" && reason !== "foreign_id") continue;
+    out.push({
+      id,
+      date: typeof date === "string" ? date : null,
+      reason,
+    });
+  }
+  return out;
+}
+
+/** Returns the stable limit phrase, or null when the failure is something else. */
+export function clearFoodDayLimitError(message: string): string | null {
+  return FOOD_DAY_LIMIT_ERRORS.find((item) => message.includes(item)) ?? null;
+}
