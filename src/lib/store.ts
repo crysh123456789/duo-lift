@@ -24,7 +24,6 @@ import {
   PROTEIN_TARGET_MAX,
   PROTEIN_TARGET_MIN,
   clipDailyTarget,
-  proteinGoalAfterWeightChange,
   todayStamp,
   upsertFoodDay,
 } from "./nutrition";
@@ -115,13 +114,6 @@ export const useGymStore = create<GymStore>()(
             const stamp = new Date().toISOString();
             if ("weightKg" in patch || "heightCm" in patch) {
               next.profileEditedAt = stamp;
-            }
-            if ("weightKg" in patch) {
-              const driven = proteinGoalAfterWeightChange(u.weightKg, next.weightKg, u.proteinTargetG);
-              if (driven !== undefined) {
-                next.proteinTargetG = driven;
-                next.proteinTargetUpdatedAt = stamp;
-              }
             }
             if ("proteinTargetG" in patch || "kcalTarget" in patch) {
               if ("proteinTargetG" in patch) {

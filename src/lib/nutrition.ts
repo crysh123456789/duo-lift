@@ -138,7 +138,7 @@ export function clipDailyTarget(value: unknown, max: number, min = PROTEIN_TARGE
   return rounded;
 }
 
-/** Explicit grams typed by hand. Body weight is applied in diaryProteinGoal. */
+/** Explicit grams stored by hand or after confirming the weight suggestion. */
 export function manualProteinGoal(user: { proteinTargetG?: number | null } | null | undefined): number | null {
   return clampDailyTarget(user?.proteinTargetG, PROTEIN_TARGET_MAX);
 }
@@ -155,8 +155,8 @@ export function weightProteinSuggestion(weightKg: number | null | undefined): nu
 }
 
 /**
- * Fase 1: the body-weight card drives the diary protein goal.
- * A manual target still wins when the person set one.
+ * Diary line only. A stored goal wins. With none set, the weight suggestion
+ * is shown and is not written until the person confirms it.
  */
 export function diaryProteinGoal(
   user: { proteinTargetG?: number | null; weightKg?: number | null } | null | undefined,
@@ -166,27 +166,33 @@ export function diaryProteinGoal(
   return weightProteinSuggestion(user?.weightKg);
 }
 
-/**
- * When body weight changes, follow it with the protein goal unless a manual
- * target is different from the previous weight-based number.
- * `undefined` means leave the stored protein goal alone.
- */
-export function proteinGoalAfterWeightChange(
-  previousWeightKg: number | null | undefined,
-  nextWeightKg: number | null | undefined,
-  currentProtein: number | null | undefined,
-): number | undefined {
-  const driven = weightProteinSuggestion(nextWeightKg);
-  if (driven == null) return undefined;
-  const current = manualProteinGoal({ proteinTargetG: currentProtein });
-  const previous = weightProteinSuggestion(previousWeightKg);
-  if (current == null || current === previous) return driven;
-  return undefined;
+export const WEIGHT_PROTEIN_ACTION = "Calcular según mi peso";
+
+/** `60 kg → 108 g`. Null when the weight cannot suggest a goal. */
+export function weightProteinLabel(weightKg: number | null | undefined): string | null {
+  const weight = acceptedBodyWeightKg(weightKg);
+  const grams = weightProteinSuggestion(weight);
+  if (weight == null || grams == null) return null;
+  return `${String(weight).replace(".", ",")} kg → ${grams} g`;
 }
 
-/** A manual protein goal is replaced only after the person confirms. */
+/**
+ * The stored protein goal never follows weight by itself.
+ * `confirmed` is the only path that copies the 1.8 g/kg suggestion.
+ */
+export function proteinGoalAfterConfirm(
+  currentProtein: number | null | undefined,
+  suggestion: number | null | undefined,
+  confirmed: boolean,
+): number | null {
+  const stored = manualProteinGoal({ proteinTargetG: currentProtein });
+  if (!confirmed || suggestion == null) return stored;
+  return clampDailyTarget(suggestion, PROTEIN_TARGET_MAX) ?? stored;
+}
+
+/** True when the suggestion differs from the stored goal, including an empty goal. */
 export function proteinGoalNeedsConfirm(current: number | null, suggestion: number | null): boolean {
-  if (suggestion == null || current == null) return false;
+  if (suggestion == null) return false;
   return current !== suggestion;
 }
 
@@ -419,7 +425,7 @@ export function formatTotals(totals: MacroTotals, goal?: number | null, kcalGoal
   return `${p} · C ${formatMacro(totals.carbsG)} · G ${formatMacro(totals.fatG)} · ${energy}`;
 }
 
-/** Day line. Manual protein wins. Otherwise the body-weight card sets 1.8 g/kg. */
+/** Day line. A stored goal wins. Otherwise the weight suggestion is shown and stays unsaved. */
 export function formatDayTotals(
   totals: MacroTotals,
   user: { proteinTargetG?: number | null; kcalTarget?: number | null; weightKg?: number | null } | null | undefined,

@@ -13,8 +13,10 @@ import {
   macroKcal,
   manualProteinGoal,
   parseBodyWeightInput,
-  proteinGoalAfterWeightChange,
+  proteinGoalAfterConfirm,
   proteinGoalNeedsConfirm,
+  WEIGHT_PROTEIN_ACTION,
+  weightProteinLabel,
   weightProteinSuggestion,
   mealSummary,
   mealTotals,
@@ -154,7 +156,7 @@ describe("manual nutrition goals", () => {
     assert.equal(/108/.test(nutritionComment({ ...cristian, proteinTargetG: 90, kcalTarget: 2200 }, noteOnly)), false);
   });
 
-  test("weight suggestion fills empty protein and asks before replacing a manual goal", () => {
+  test("weight never rewrites the stored protein goal; the suggestion applies only after confirm", () => {
     assert.equal(weightProteinSuggestion(60), 108);
     assert.equal(weightProteinSuggestion(60.4), 109);
     assert.equal(weightProteinSuggestion(60.44), null);
@@ -162,14 +164,36 @@ describe("manual nutrition goals", () => {
     assert.equal(weightProteinSuggestion(400.5), null);
     assert.equal(weightProteinSuggestion(null), null);
     assert.equal(weightProteinSuggestion(0), null);
-    assert.equal(proteinGoalAfterWeightChange(60, 70, 108), 126);
-    assert.equal(proteinGoalAfterWeightChange(60, 70, 90), undefined);
-    assert.equal(proteinGoalAfterWeightChange(null, 60, null), 108);
-    assert.equal(proteinGoalAfterWeightChange(60, null, 108), undefined);
-    assert.equal(proteinGoalNeedsConfirm(null, 108), false);
+    assert.equal(weightProteinLabel(60), "60 kg → 108 g");
+    assert.equal(weightProteinLabel(60.4), "60,4 kg → 109 g");
+    assert.equal(weightProteinLabel(10), null);
+    assert.equal(weightProteinLabel(null), null);
+    assert.equal(WEIGHT_PROTEIN_ACTION, "Calcular según mi peso");
+
+    assert.equal(proteinGoalAfterConfirm(120, 108, false), 120);
+    assert.equal(proteinGoalAfterConfirm(120, weightProteinSuggestion(60), false), 120);
+    assert.equal(proteinGoalAfterConfirm(120, 108, true), 108);
+    assert.equal(proteinGoalAfterConfirm(null, 108, false), null);
+    assert.equal(proteinGoalAfterConfirm(null, 108, true), 108);
+    assert.equal(proteinGoalAfterConfirm(120, null, true), 120);
+    assert.equal(proteinGoalNeedsConfirm(null, 108), true);
+    assert.equal(proteinGoalNeedsConfirm(120, 108), true);
     assert.equal(proteinGoalNeedsConfirm(108, 108), false);
-    assert.equal(proteinGoalNeedsConfirm(90, 108), true);
     assert.equal(proteinGoalNeedsConfirm(90, null), false);
+
+    const store = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    assert.equal(/proteinGoalAfterWeightChange|proteinTargetG = driven/.test(store), false);
+    const control = readFileSync(new URL("../components/weight-protein-control.tsx", import.meta.url), "utf8");
+    assert.match(control, /\{WEIGHT_PROTEIN_ACTION\}/);
+    assert.match(control, /proteinGoalAfterConfirm\(/);
+    const confirmCall = control.indexOf("proteinGoalAfterConfirm(");
+    const applyCall = control.indexOf("onApply(next)");
+    assert.equal(confirmCall >= 0 && applyCall > confirmCall, true);
+    assert.match(readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8"), /WeightProteinControl/);
+    assert.match(
+      readFileSync(new URL("../components/nutrition-diary.tsx", import.meta.url), "utf8"),
+      /WeightProteinControl/,
+    );
   });
 
   test("the weight field accepts one comma decimal and rejects anything else", () => {

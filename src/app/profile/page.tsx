@@ -7,34 +7,13 @@ import { BodyWeightField } from "@/components/body-weight-field";
 import { Button, Field, NumberField, Panel } from "@/components/ui";
 import { bumpAuthEpoch, setAuthPhase } from "@/lib/auth/phase";
 import { bestWeight, exerciseByName } from "@/lib/metrics";
-import { diaryProteinGoal, manualProteinGoal, weightProteinSuggestion } from "@/lib/nutrition";
+import { WeightProteinControl } from "@/components/weight-protein-control";
 import { personName } from "@/lib/people";
 import { setDuoUnlocked } from "@/lib/session-flag";
 import { useGymStore } from "@/lib/store";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { setSyncUserId } from "@/lib/sync/session-user";
 import { getSyncPhase } from "@/lib/sync/status";
-
-function WeightProteinLine({
-  weightKg,
-  proteinTargetG,
-}: {
-  weightKg: number | null;
-  proteinTargetG?: number | null;
-}) {
-  const driven = weightProteinSuggestion(weightKg);
-  const manual = manualProteinGoal({ proteinTargetG });
-  const shown = diaryProteinGoal({ weightKg, proteinTargetG });
-  if (shown == null) return null;
-  if (manual != null && driven != null && manual !== driven) {
-    return (
-      <p className="text-xs text-muted">
-        Meta manual: {manual} g. Este peso marca {driven} g.
-      </p>
-    );
-  }
-  return <p className="text-xs text-muted">Meta de proteína: {shown} g (1,8 g/kg).</p>;
-}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -111,10 +90,14 @@ export default function ProfilePage() {
             onWeightKg={(weightKg) => updateUser(me.id, { weightKg })}
           />
         </div>
-        <WeightProteinLine weightKg={me.weightKg} proteinTargetG={me.proteinTargetG} />
+        <WeightProteinControl
+          weightKg={me.weightKg}
+          proteinTargetG={me.proteinTargetG}
+          onApply={(proteinTargetG) => updateUser(me.id, { proteinTargetG })}
+        />
         <p className="text-xs uppercase tracking-wider text-muted">Metas del diario</p>
         <p className="text-sm text-muted">
-          La proteína sale de este peso, 1,8 g por kilo, mientras no escribas una meta a mano. Las calorías siguen a mano. Si no hay ni peso ni meta, el diario muestra P x/—.
+          El peso no cambia la proteína guardada. El botón calcula 1,8 g por kilo y la guarda solo si confirmas. Las calorías siguen a mano. Sin meta guardada, el diario muestra la sugerencia y este campo sigue vacío.
         </p>
         <div className="grid grid-cols-2 gap-3">
           <NumberField

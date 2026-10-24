@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { SessionDateField } from "@/components/session-date-field";
+import { WeightProteinControl } from "@/components/weight-protein-control";
 import { Button, Field, NumberField, Panel } from "@/components/ui";
 import { PageTitle } from "@/components/page-title";
 import { whenLabel } from "@/lib/format";
@@ -28,8 +29,6 @@ import {
   manualKcalGoal,
   manualProteinGoal,
   normalizeMealLog,
-  proteinGoalNeedsConfirm,
-  weightProteinSuggestion,
   shiftStamp,
   todayStamp,
 } from "@/lib/nutrition";
@@ -404,8 +403,6 @@ function ManualGoalSheet({ onClose }: { onClose: () => void }) {
   const updateUser = useGymStore((s) => s.updateUser);
   const protein = manualProteinGoal(me);
   const kcal = manualKcalGoal(me);
-  const suggestion = weightProteinSuggestion(me?.weightKg);
-  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -414,21 +411,6 @@ function ManualGoalSheet({ onClose }: { onClose: () => void }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-
-  function applySuggestion() {
-    if (!me || suggestion == null) return;
-    if (proteinGoalNeedsConfirm(protein, suggestion)) {
-      setConfirming(true);
-      return;
-    }
-    updateUser(me.id, { proteinTargetG: suggestion });
-  }
-
-  function confirmReplace() {
-    if (!me || suggestion == null) return;
-    updateUser(me.id, { proteinTargetG: suggestion });
-    setConfirming(false);
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -459,25 +441,13 @@ function ManualGoalSheet({ onClose }: { onClose: () => void }) {
             onChange={(kcalTarget) => me && updateUser(me.id, { kcalTarget })}
           />
         </div>
-        {suggestion != null ? (
-          confirming ? (
-            <div className="mt-3 space-y-2">
-              <p className="text-sm">¿Reemplazar la meta manual de proteína por {suggestion} g?</p>
-              <div className="flex gap-2">
-                <Button variant="primary" className="h-11 min-h-11 flex-1" onClick={confirmReplace}>
-                  Reemplazar
-                </Button>
-                <Button className="h-11 min-h-11 flex-1" onClick={() => setConfirming(false)}>
-                  Cancelar
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Button className="mt-3 h-11 min-h-11 w-full" onClick={applySuggestion}>
-              Calcular según mi peso
-            </Button>
-          )
-        ) : null}
+        <div className="mt-3">
+          <WeightProteinControl
+            weightKg={me?.weightKg}
+            proteinTargetG={me?.proteinTargetG}
+            onApply={(proteinTargetG) => me && updateUser(me.id, { proteinTargetG })}
+          />
+        </div>
         <Button className="mt-3 h-11 min-h-11 w-full" onClick={onClose}>
           Listo
         </Button>
