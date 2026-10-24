@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { PageTitle } from "@/components/page-title";
+import { BodyWeightField } from "@/components/body-weight-field";
 import { Button, Field, Panel } from "@/components/ui";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/constants";
 import { authErrorMessage } from "@/lib/auth/errors";
+import { BODY_WEIGHT_ERROR } from "@/lib/nutrition";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
 function optionalNumber(raw: string): number | null {
@@ -22,7 +24,8 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [height, setHeight] = useState("");
-  const [weight, setWeight] = useState("");
+  const [weightKg, setWeightKg] = useState<number | null>(null);
+  const [weightInvalid, setWeightInvalid] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,8 +43,11 @@ export default function SignupPage() {
       setError("Falta la configuración de la cuenta.");
       return;
     }
+    if (weightInvalid) {
+      setError(BODY_WEIGHT_ERROR);
+      return;
+    }
     const heightCm = optionalNumber(height);
-    const weightKg = optionalNumber(weight);
     setBusy(true);
     const { data, error: signError } = await supabase.auth.signUp({
       email: email.trim(),
@@ -129,14 +135,7 @@ export default function SignupPage() {
                   className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 font-mono outline-none focus:border-accent"
                 />
               </Field>
-              <Field label="Peso (kg)">
-                <input
-                  inputMode="decimal"
-                  value={weight}
-                  onChange={(e) => setWeight(e.target.value)}
-                  className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 font-mono outline-none focus:border-accent"
-                />
-              </Field>
+              <BodyWeightField weightKg={weightKg} onWeightKg={setWeightKg} onInvalid={setWeightInvalid} />
             </div>
           </details>
           {error ? <p className="text-sm text-danger">{error}</p> : null}

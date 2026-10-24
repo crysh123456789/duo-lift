@@ -43,6 +43,11 @@ export type MealEntry = {
   time: string | null;
   items: MealItem[];
   note: string;
+  /**
+   * The editor removed every item of this slot in one save.
+   * Sync must keep the empty list instead of refilling it from an older copy.
+   */
+  cleared?: boolean;
 };
 
 export type MealLog = Record<MealSlot, MealEntry>;
@@ -72,10 +77,14 @@ export type User = {
   kcalTarget?: number | null;
   /** Server clock for the last explicit goal write or clear. */
   targetsUpdatedAt?: string | null;
+  /** Server clock for the last explicit height or weight write. */
+  profileUpdatedAt?: string | null;
   /** This phone edited protein. Stays off the wire comparison with the server row. */
   proteinTargetUpdatedAt?: string | null;
   /** This phone edited kilocalories. Stays off the wire comparison with the server row. */
   kcalTargetUpdatedAt?: string | null;
+  /** This phone edited height or weight. Stays off the wire comparison with the server row. */
+  profileEditedAt?: string | null;
   createdAt: string;
 };
 

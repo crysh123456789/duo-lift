@@ -37,6 +37,7 @@ export type UserRow = {
   protein_target_g?: string | number | null;
   kcal_target?: string | number | null;
   targets_updated_at?: string | null;
+  profile_updated_at?: string | null;
   created_at: string;
 };
 
@@ -208,6 +209,7 @@ export function gymFromRows(tables: RemoteTables): { data: GymData; remindersFro
       proteinTargetG: clampDailyTarget(row.protein_target_g, PROTEIN_TARGET_MAX),
       kcalTarget: clampDailyTarget(row.kcal_target, KCAL_TARGET_MAX, KCAL_TARGET_MIN),
       targetsUpdatedAt: iso(row.targets_updated_at),
+      profileUpdatedAt: iso(row.profile_updated_at),
       createdAt: iso(row.created_at) ?? new Date(0).toISOString(),
     })),
     members: tables.members.map((row) => ({

@@ -8,6 +8,7 @@ export const TOMBSTONE_ENTITIES = [
   "foodDays",
   "workingLoads",
   "members",
+  "mealItems",
 ] as const;
 
 export type TombstoneEntity = (typeof TOMBSTONE_ENTITIES)[number];

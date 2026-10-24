@@ -388,7 +388,7 @@ function MealEditor({
         variant="primary"
         className="h-12 min-h-12 w-full"
         onClick={() => {
-          const id = saveFoodDay({ date, meals: draftMeals });
+          const id = saveFoodDay({ date, meals: draftMeals, editedSlot: slot });
           if (id) onSaved();
         }}
       >

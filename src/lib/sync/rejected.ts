@@ -14,6 +14,8 @@ export const TARGET_LIMIT_ERRORS = [
   "weight_kg out of range",
   "targets_updated_at must be a timestamp",
   "targets_updated_at is more than 5 minutes in the future",
+  "profile_updated_at must be a timestamp",
+  "profile_updated_at is more than 5 minutes in the future",
 ] as const;
 
 export const SYNC_APPLY_INPUT_ERRORS = [...FOOD_DAY_LIMIT_ERRORS, ...TARGET_LIMIT_ERRORS] as const;

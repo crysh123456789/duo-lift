@@ -46,6 +46,14 @@ describe("rejected food days", () => {
       clearSyncApplyError("targets_updated_at is more than 5 minutes in the future"),
       "targets_updated_at is more than 5 minutes in the future",
     );
+    assert.equal(
+      clearSyncApplyError("profile_updated_at must be a timestamp"),
+      "profile_updated_at must be a timestamp",
+    );
+    assert.equal(
+      clearSyncApplyError("profile_updated_at is more than 5 minutes in the future"),
+      "profile_updated_at is more than 5 minutes in the future",
+    );
     assert.equal(clearSyncApplyError("too many food_days"), "too many food_days");
     assert.equal(clearSyncApplyError("duplicate key value"), null);
   });
