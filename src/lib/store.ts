@@ -11,6 +11,7 @@ import type {
   Exercise,
   GymData,
   MealLog,
+  MealSlot,
   MuscleGroup,
   ReactionKind,
   ReminderSettings,
@@ -75,7 +76,7 @@ type GymStore = GymData & {
     muscleGroup: MuscleGroup;
     isUnilateral?: boolean;
   }) => string;
-  saveFoodDay: (payload: { date: string; meals?: MealLog; rawInput?: string }) => string;
+  saveFoodDay: (payload: { date: string; meals?: MealLog; rawInput?: string; editedSlot?: MealSlot }) => string;
   updateReminders: (patch: Partial<ReminderSettings>) => void;
   markReminderFired: (key: string) => void;
 };
@@ -110,8 +111,11 @@ export const useGymStore = create<GymStore>()(
           users: state.users.map((u) => {
             if (u.id !== userId) return u;
             const next = { ...u, ...patch };
+            const stamp = new Date().toISOString();
+            if ("weightKg" in patch || "heightCm" in patch) {
+              next.profileEditedAt = stamp;
+            }
             if ("proteinTargetG" in patch || "kcalTarget" in patch) {
-              const stamp = new Date().toISOString();
               if ("proteinTargetG" in patch) {
                 next.proteinTargetG = clipDailyTarget(patch.proteinTargetG, PROTEIN_TARGET_MAX, PROTEIN_TARGET_MIN);
                 next.proteinTargetUpdatedAt = stamp;
@@ -548,7 +552,7 @@ export const useGymStore = create<GymStore>()(
         return id;
       },
 
-      saveFoodDay: ({ date, meals, rawInput }) => {
+      saveFoodDay: ({ date, meals, rawInput, editedSlot }) => {
         if (!duoUnlocked()) return "";
         const state = get();
         const user = state.users.find((u) => u.id === state.activeUserId);
@@ -559,6 +563,7 @@ export const useGymStore = create<GymStore>()(
           date,
           meals,
           rawInput,
+          editedSlot,
         });
         set({ foodDays });
         return saved.id;

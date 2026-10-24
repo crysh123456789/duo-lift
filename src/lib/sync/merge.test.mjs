@@ -241,6 +241,53 @@ describe("mergeRemoteSnapshot", () => {
     assert.equal(payload.users[0].targets_updated_at, "2026-10-24T16:00:00.000Z");
   });
 
+  test("a null local height or weight does not hide the server value", () => {
+    const local = gym();
+    local.users[0] = {
+      ...local.users[0],
+      heightCm: null,
+      weightKg: null,
+      profileEditedAt: "2026-10-24T16:00:00.000Z",
+    };
+    const remote = gym();
+    remote.users[0] = {
+      ...remote.users[0],
+      heightCm: 167,
+      weightKg: 60.4,
+      profileUpdatedAt: "2026-10-24T12:00:00.000Z",
+    };
+    const merged = mergeRemoteSnapshot(local, remote, [], {
+      seed: gym(),
+      preferLocal: true,
+      remindersFromServer: true,
+    });
+    assert.equal(merged.users[0].weightKg, 60.4);
+    assert.equal(merged.users[0].heightCm, 167);
+  });
+
+  test("a newer profile edit replaces the server weight and is sent with its clock", () => {
+    const local = gym();
+    local.users[0] = {
+      ...local.users[0],
+      weightKg: 70,
+      profileEditedAt: "2026-10-24T16:00:00.000Z",
+    };
+    const remote = gym();
+    remote.users[0] = {
+      ...remote.users[0],
+      weightKg: 60,
+      profileUpdatedAt: "2026-10-24T12:00:00.000Z",
+    };
+    const merged = mergeRemoteSnapshot(local, remote, [], {
+      seed: gym(),
+      remindersFromServer: true,
+    });
+    assert.equal(merged.users[0].weightKg, 70);
+    const payload = toSyncPayload(merged, []);
+    assert.equal(payload.users[0].weight_kg, 70);
+    assert.equal(payload.users[0].profile_updated_at, "2026-10-24T16:00:00.000Z");
+  });
+
   test("a server-closed session replaces a stale open copy", () => {
     const local = gym({
       workouts: [

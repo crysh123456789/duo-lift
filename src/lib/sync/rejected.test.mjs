@@ -42,9 +42,23 @@ describe("rejected food days", () => {
       "weight_kg must have at most 1 decimal",
     );
     assert.equal(clearSyncApplyError("weight_kg out of range"), "weight_kg out of range");
+    assert.equal(clearSyncApplyError("height_cm must be numeric"), "height_cm must be numeric");
+    assert.equal(
+      clearSyncApplyError("height_cm must have at most 1 decimal"),
+      "height_cm must have at most 1 decimal",
+    );
+    assert.equal(clearSyncApplyError("height_cm out of range"), "height_cm out of range");
     assert.equal(
       clearSyncApplyError("targets_updated_at is more than 5 minutes in the future"),
       "targets_updated_at is more than 5 minutes in the future",
+    );
+    assert.equal(
+      clearSyncApplyError("profile_updated_at must be a timestamp"),
+      "profile_updated_at must be a timestamp",
+    );
+    assert.equal(
+      clearSyncApplyError("profile_updated_at is more than 5 minutes in the future"),
+      "profile_updated_at is more than 5 minutes in the future",
     );
     assert.equal(clearSyncApplyError("too many food_days"), "too many food_days");
     assert.equal(clearSyncApplyError("duplicate key value"), null);

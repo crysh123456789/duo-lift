@@ -1,7 +1,7 @@
 import { collapseFoodDays } from "@/lib/nutrition";
 import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import type { GymData } from "@/lib/types";
-import { mergeRemoteSnapshot } from "./merge";
+import { mergeRemoteSnapshot, stripMealItems } from "./merge";
 import { canonicalize } from "./snapshot";
 import type { Tombstone } from "./types";
 
@@ -125,7 +125,12 @@ export function prepareSyncSnapshot(
     ...collapsedSets.tombstones,
     ...collapsed.tombstones,
   ]).filter((row) => !isDemoTombstone(row, local));
-  const snapshot = canonicalize(omitSeedHistory(collapsed.data));
+  const snapshot = canonicalize(
+    omitSeedHistory({
+      ...collapsed.data,
+      foodDays: stripMealItems(collapsed.data.foodDays ?? [], nextTombstones),
+    }),
+  );
   return {
     snapshot,
     tombstones: nextTombstones,

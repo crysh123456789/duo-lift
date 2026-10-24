@@ -3,9 +3,11 @@
 import { useRouter } from "next/navigation";
 import { ReminderSettings } from "@/components/reminder-settings";
 import { PageTitle } from "@/components/page-title";
+import { BodyWeightField } from "@/components/body-weight-field";
 import { Button, Field, NumberField, Panel } from "@/components/ui";
 import { bumpAuthEpoch, setAuthPhase } from "@/lib/auth/phase";
 import { bestWeight, exerciseByName } from "@/lib/metrics";
+import { WeightProteinControl } from "@/components/weight-protein-control";
 import { personName } from "@/lib/people";
 import { setDuoUnlocked } from "@/lib/session-flag";
 import { useGymStore } from "@/lib/store";
@@ -72,26 +74,30 @@ export default function ProfilePage() {
             <input
               inputMode="decimal"
               value={me.heightCm ?? ""}
-              onChange={(e) =>
-                updateUser(me.id, { heightCm: e.target.value ? Number(e.target.value) : null })
-              }
+              onChange={(e) => {
+                if (!e.target.value) {
+                  updateUser(me.id, { heightCm: null });
+                  return;
+                }
+                const value = Number(e.target.value);
+                if (Number.isFinite(value)) updateUser(me.id, { heightCm: value });
+              }}
               className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 font-mono outline-none focus:border-accent"
             />
           </Field>
-          <Field label="Peso (kg)">
-            <input
-              inputMode="decimal"
-              value={me.weightKg ?? ""}
-              onChange={(e) =>
-                updateUser(me.id, { weightKg: e.target.value ? Number(e.target.value) : null })
-              }
-              className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 font-mono outline-none focus:border-accent"
-            />
-          </Field>
+          <BodyWeightField
+            weightKg={me.weightKg}
+            onWeightKg={(weightKg) => updateUser(me.id, { weightKg })}
+          />
         </div>
+        <WeightProteinControl
+          weightKg={me.weightKg}
+          proteinTargetG={me.proteinTargetG}
+          onApply={(proteinTargetG) => updateUser(me.id, { proteinTargetG })}
+        />
         <p className="text-xs uppercase tracking-wider text-muted">Metas del diario</p>
         <p className="text-sm text-muted">
-          Proteína y calorías a mano, por persona. No salen del peso. Si la proteína queda vacía, el diario muestra P x/—.
+          El peso no cambia la proteína guardada. El botón calcula 1,8 g por kilo y la guarda solo si confirmas. Las calorías siguen a mano. Sin meta guardada, el diario muestra la sugerencia y este campo sigue vacío.
         </p>
         <div className="grid grid-cols-2 gap-3">
           <NumberField

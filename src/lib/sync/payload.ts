@@ -70,19 +70,26 @@ export function toSyncPayload(data: GymData, tombstones: Tombstone[]) {
       .map((row) => {
         const proteinTouched = Boolean(row.proteinTargetUpdatedAt);
         const kcalTouched = Boolean(row.kcalTargetUpdatedAt);
+        const profileTouched = Boolean(row.profileEditedAt);
         const protein = clipDailyTarget(row.proteinTargetG, PROTEIN_TARGET_MAX, PROTEIN_TARGET_MIN);
         const kcal = clipDailyTarget(row.kcalTarget, KCAL_TARGET_MAX, KCAL_TARGET_MIN);
+        const weight = syncBodyWeightKg(row.weightKg);
+        const height = typeof row.heightCm === "number" && Number.isFinite(row.heightCm) ? row.heightCm : null;
         const user: Record<string, unknown> = {
           id: row.id,
           email: row.email,
           display_name: row.displayName,
           avatar_hue: row.avatarHue,
           unit_system: row.unitSystem,
-          height_cm: row.heightCm,
-          weight_kg: syncBodyWeightKg(row.weightKg),
           nutrition_goal: row.nutritionGoal,
           created_at: row.createdAt,
         };
+        // Null or absent must not erase a stored height or weight.
+        if (height != null) user.height_cm = height;
+        if (weight != null) user.weight_kg = weight;
+        if (profileTouched && row.profileEditedAt && (height != null || weight != null)) {
+          user.profile_updated_at = row.profileEditedAt;
+        }
         // Untouched nulls are omitted so they cannot clear a server goal.
         if (proteinTouched || protein != null) user.protein_target_g = protein;
         if (kcalTouched || kcal != null) user.kcal_target = kcal;

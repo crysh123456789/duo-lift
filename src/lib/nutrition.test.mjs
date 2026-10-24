@@ -1,15 +1,23 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { dueReminders, DEFAULT_REMINDERS } from "./reminders.ts";
 import {
+  BODY_WEIGHT_ERROR,
+  BODY_WEIGHT_NUMERIC_ERROR,
   collapseFoodDays,
   dayTotals,
+  diaryProteinGoal,
   emptyMeals,
   formatDayTotals,
   formatTotals,
   macroKcal,
   manualProteinGoal,
+  parseBodyWeightInput,
+  proteinGoalAfterConfirm,
   proteinGoalNeedsConfirm,
+  WEIGHT_PROTEIN_ACTION,
+  weightProteinLabel,
   weightProteinSuggestion,
   mealSummary,
   mealTotals,
@@ -20,7 +28,8 @@ import {
   proteinTargetG,
   upsertFoodDay,
 } from "./nutrition.ts";
-import { mergeRemoteSnapshot } from "./sync/merge.ts";
+import { collectTombstones, mergeRemoteSnapshot } from "./sync/merge.ts";
+import { prepareSyncSnapshot } from "./sync/round.ts";
 import { toSyncPayload } from "./sync/payload.ts";
 import { gymFromRows } from "./sync/rows.ts";
 import { canonicalize } from "./sync/snapshot.ts";
@@ -117,10 +126,14 @@ describe("day totals", () => {
 });
 
 describe("manual nutrition goals", () => {
-  test("diary uses the manual protein goal and ignores weight", () => {
+  test("the diary uses a manual protein goal, otherwise 1.8 g per kilo of body weight", () => {
     assert.equal(manualProteinGoal({ proteinTargetG: 90, weightKg: 60 }), 90);
     assert.equal(manualProteinGoal({ weightKg: 60 }), null);
     assert.equal(manualProteinGoal({ proteinTargetG: 0, weightKg: 60 }), 0);
+    assert.equal(diaryProteinGoal({ proteinTargetG: 90, weightKg: 60 }), 90);
+    assert.equal(diaryProteinGoal({ weightKg: 60 }), 108);
+    assert.equal(diaryProteinGoal({ proteinTargetG: 0, weightKg: 60 }), 0);
+    assert.equal(diaryProteinGoal({ weightKg: 10 }), null);
     assert.equal(proteinTargetG(60), 108);
     const day = dayTotals(breakfastLog());
     assert.equal(formatTotals(day, manualProteinGoal({ weightKg: 60 })), "P 28/— · C 51 · G 21 · 505 kcal");
@@ -129,26 +142,82 @@ describe("manual nutrition goals", () => {
       formatDayTotals(day, { proteinTargetG: 120, kcalTarget: 2500, weightKg: 60 }),
       "P 28/120 · C 51 · G 21 · 505/2500 kcal",
     );
-    assert.equal(formatDayTotals(day, { weightKg: 60 }), "P 28/— · C 51 · G 21 · 505 kcal");
+    assert.equal(formatDayTotals(day, { weightKg: 60 }), "P 28/108 · C 51 · G 21 · 505 kcal");
+    assert.equal(formatDayTotals(day, { weightKg: 60.4 }), "P 28/109 · C 51 · G 21 · 505 kcal");
+    assert.equal(formatDayTotals(day, {}), "P 28/— · C 51 · G 21 · 505 kcal");
 
     const withGoal = nutritionComment({ ...cristian, proteinTargetG: 90 }, breakfastLog());
     assert.match(withGoal, /90 g/);
     assert.equal(/108/.test(withGoal), false);
     const unset = nutritionComment(cristian, breakfastLog());
-    assert.equal(/108/.test(unset), false);
+    assert.match(unset, /108 g/);
     const noteOnly = { ...emptyMeals(), desayuno: { time: "08:00", items: [], note: "avena" } };
-    assert.equal(/108/.test(nutritionComment(cristian, noteOnly)), false);
+    assert.match(nutritionComment(cristian, noteOnly), /108 g de proteína/);
     assert.match(nutritionComment({ ...cristian, proteinTargetG: 90, kcalTarget: 2200 }, noteOnly), /90 g de proteína y 2200 kcal/);
+    assert.equal(/108/.test(nutritionComment({ ...cristian, proteinTargetG: 90, kcalTarget: 2200 }, noteOnly)), false);
   });
 
-  test("weight suggestion fills empty protein and asks before replacing a manual goal", () => {
+  test("weight never rewrites the stored protein goal; the suggestion applies only after confirm", () => {
     assert.equal(weightProteinSuggestion(60), 108);
+    assert.equal(weightProteinSuggestion(60.4), 109);
+    assert.equal(weightProteinSuggestion(60.44), null);
+    assert.equal(weightProteinSuggestion(10), null);
+    assert.equal(weightProteinSuggestion(400.5), null);
     assert.equal(weightProteinSuggestion(null), null);
     assert.equal(weightProteinSuggestion(0), null);
-    assert.equal(proteinGoalNeedsConfirm(null, 108), false);
+    assert.equal(weightProteinLabel(60), "60 kg → 108 g");
+    assert.equal(weightProteinLabel(60.4), "60,4 kg → 109 g");
+    assert.equal(weightProteinLabel(10), null);
+    assert.equal(weightProteinLabel(null), null);
+    assert.equal(WEIGHT_PROTEIN_ACTION, "Calcular según mi peso");
+
+    assert.equal(proteinGoalAfterConfirm(120, 108, false), 120);
+    assert.equal(proteinGoalAfterConfirm(120, weightProteinSuggestion(60), false), 120);
+    assert.equal(proteinGoalAfterConfirm(120, 108, true), 108);
+    assert.equal(proteinGoalAfterConfirm(null, 108, false), null);
+    assert.equal(proteinGoalAfterConfirm(null, 108, true), 108);
+    assert.equal(proteinGoalAfterConfirm(120, null, true), 120);
+    assert.equal(proteinGoalNeedsConfirm(null, 108), true);
+    assert.equal(proteinGoalNeedsConfirm(120, 108), true);
     assert.equal(proteinGoalNeedsConfirm(108, 108), false);
-    assert.equal(proteinGoalNeedsConfirm(90, 108), true);
     assert.equal(proteinGoalNeedsConfirm(90, null), false);
+
+    const store = readFileSync(new URL("./store.ts", import.meta.url), "utf8");
+    assert.equal(/proteinGoalAfterWeightChange|proteinTargetG = driven/.test(store), false);
+    const control = readFileSync(new URL("../components/weight-protein-control.tsx", import.meta.url), "utf8");
+    assert.match(control, /\{WEIGHT_PROTEIN_ACTION\}/);
+    assert.match(control, /proteinGoalAfterConfirm\(/);
+    const confirmCall = control.indexOf("proteinGoalAfterConfirm(");
+    const applyCall = control.indexOf("onApply(next)");
+    assert.equal(confirmCall >= 0 && applyCall > confirmCall, true);
+    assert.match(readFileSync(new URL("../app/profile/page.tsx", import.meta.url), "utf8"), /WeightProteinControl/);
+    assert.match(
+      readFileSync(new URL("../components/nutrition-diary.tsx", import.meta.url), "utf8"),
+      /WeightProteinControl/,
+    );
+  });
+
+  test("the weight field accepts one comma decimal and rejects anything else", () => {
+    assert.equal(BODY_WEIGHT_ERROR, "Usa un número entre 20 y 400, con máximo un decimal");
+    assert.equal(BODY_WEIGHT_NUMERIC_ERROR, "El peso debe ser un número");
+    assert.deepEqual(parseBodyWeightInput("60,4"), { state: "ok", weightKg: 60.4 });
+    assert.deepEqual(parseBodyWeightInput("60.4"), { state: "ok", weightKg: 60.4 });
+    assert.deepEqual(parseBodyWeightInput(" 20 "), { state: "ok", weightKg: 20 });
+    assert.deepEqual(parseBodyWeightInput("400"), { state: "ok", weightKg: 400 });
+    assert.deepEqual(parseBodyWeightInput(""), { state: "empty", weightKg: null });
+    assert.deepEqual(parseBodyWeightInput("   "), { state: "empty", weightKg: null });
+    assert.deepEqual(parseBodyWeightInput("60,"), { state: "incomplete" });
+    assert.deepEqual(parseBodyWeightInput("60."), { state: "incomplete" });
+    assert.deepEqual(parseBodyWeightInput("abc"), { state: "error", message: BODY_WEIGHT_NUMERIC_ERROR });
+    assert.deepEqual(parseBodyWeightInput("60.4.1"), { state: "error", message: BODY_WEIGHT_NUMERIC_ERROR });
+    assert.deepEqual(parseBodyWeightInput("60,44"), { state: "error", message: BODY_WEIGHT_ERROR });
+    assert.deepEqual(parseBodyWeightInput("10"), { state: "error", message: BODY_WEIGHT_ERROR });
+    assert.deepEqual(parseBodyWeightInput("400.5"), { state: "error", message: BODY_WEIGHT_ERROR });
+    assert.deepEqual(parseBodyWeightInput("-1"), { state: "error", message: BODY_WEIGHT_ERROR });
+    const field = readFileSync(new URL("../components/body-weight-field.tsx", import.meta.url), "utf8");
+    assert.match(field, /inputMode="decimal"/);
+    assert.match(field, /\{message\}/);
+    assert.match(field, /role="alert"/);
   });
 
   test("manual targets round-trip through the sync payload", () => {
@@ -226,6 +295,18 @@ describe("manual nutrition goals", () => {
     assert.equal(sent({ weightKg: 400.5 }).weight_kg, 400);
     assert.notEqual(sent({ weightKg: 10 }).weight_kg, 10);
     assert.notEqual(sent({ weightKg: 400.5 }).weight_kg, 400.5);
+    const absent = sent({ weightKg: null, heightCm: null, profileEditedAt: "2026-10-24T16:00:00.000Z" });
+    assert.equal(Object.hasOwn(absent, "weight_kg"), false);
+    assert.equal(Object.hasOwn(absent, "height_cm"), false);
+    assert.equal(Object.hasOwn(absent, "profile_updated_at"), false);
+    const edited = sent({
+      weightKg: 70,
+      heightCm: 168,
+      profileEditedAt: "2026-10-24T16:00:00.000Z",
+    });
+    assert.equal(edited.weight_kg, 70);
+    assert.equal(edited.height_cm, 168);
+    assert.equal(edited.profile_updated_at, "2026-10-24T16:00:00.000Z");
     const clipped = sent({
       proteinTargetG: 900.6,
       kcalTarget: 25000.4,
@@ -556,5 +637,86 @@ describe("time and items persistence", () => {
       now: new Date(2026, 9, 23, 9, 0, 0),
     });
     assert.equal(due.some((row) => row.key.endsWith(":desayuno")), false);
+  });
+
+  test("clearing every item of a meal stays empty after reload and on another device", () => {
+    const saved = upsertFoodDay({
+      foodDays: [],
+      user: cristian,
+      userId: cristian.id,
+      date: "2026-10-22",
+      meals: breakfastLog(),
+      now: "2026-10-22T12:00:00.000Z",
+      createId: () => "food-22",
+    });
+    const cleared = upsertFoodDay({
+      foodDays: saved.foodDays,
+      user: cristian,
+      userId: cristian.id,
+      date: "2026-10-22",
+      meals: { desayuno: { time: "08:30", note: "", items: [] } },
+      editedSlot: "desayuno",
+      now: "2026-10-22T12:10:00.000Z",
+    });
+    assert.equal(cleared.saved.meals.desayuno.items.length, 0);
+    assert.equal(cleared.saved.meals.desayuno.cleared, true);
+
+    const stones = collectTombstones(
+      gym({ foodDays: saved.foodDays }),
+      gym({ foodDays: cleared.foodDays }),
+    );
+    assert.deepEqual(
+      stones.filter((row) => row.entity === "mealItems").map((row) => row.id).sort(),
+      ["avena", "huevo", "leche"],
+    );
+    assert.equal(stones.some((row) => row.entity === "foodDays"), false);
+
+    const oneByOne = upsertFoodDay({
+      foodDays: saved.foodDays,
+      user: cristian,
+      userId: cristian.id,
+      date: "2026-10-22",
+      meals: { desayuno: { time: "08:30", note: "", items: [huevo, avena] } },
+      editedSlot: "desayuno",
+      now: "2026-10-22T12:08:00.000Z",
+    });
+    assert.equal(oneByOne.saved.meals.desayuno.cleared, undefined);
+    assert.deepEqual(
+      oneByOne.saved.meals.desayuno.items.map((item) => item.id),
+      ["huevo", "avena"],
+    );
+    assert.deepEqual(
+      collectTombstones(gym({ foodDays: saved.foodDays }), gym({ foodDays: oneByOne.foodDays })),
+      [{ entity: "mealItems", id: "leche" }],
+    );
+
+    const remote = gym({ foodDays: [saved.saved] });
+    const local = gym({
+      foodDays: [{ ...cleared.saved, id: "food-phone", updatedAt: "2026-10-22T18:00:00.000Z" }],
+    });
+    const prepared = prepareSyncSnapshot(local, remote, stones, { remindersFromServer: true });
+    assert.equal(prepared.snapshot.foodDays.length, 1);
+    assert.equal(prepared.snapshot.foodDays[0].meals.desayuno.items.length, 0);
+    assert.equal(prepared.snapshot.foodDays[0].meals.desayuno.cleared, true);
+    const payload = toSyncPayload(prepared.snapshot, prepared.tombstones);
+    assert.deepEqual(payload.food_days[0].meals.desayuno.items, []);
+    assert.equal(payload.food_days[0].meals.desayuno.cleared, true);
+    assert.deepEqual(
+      payload.tombstones.filter((row) => row.entity === "mealItems").map((row) => row.id).sort(),
+      ["avena", "huevo", "leche"],
+    );
+
+    const withoutStones = prepareSyncSnapshot(local, remote, [], { remindersFromServer: true });
+    assert.equal(withoutStones.snapshot.foodDays[0].meals.desayuno.items.length, 0);
+    assert.equal(withoutStones.snapshot.foodDays[0].meals.desayuno.cleared, true);
+
+    const reloaded = mergeRemoteSnapshot(
+      gym({ foodDays: cleared.foodDays }),
+      remote,
+      stones,
+      { seed: gym(), remindersFromServer: true },
+    );
+    assert.equal(reloaded.foodDays[0].meals.desayuno.items.length, 0);
+    assert.equal(dayTotals(reloaded.foodDays[0].meals).proteinG, 0);
   });
 });

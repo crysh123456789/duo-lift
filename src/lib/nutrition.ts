@@ -89,6 +89,51 @@ export function syncBodyWeightKg(value: number | null | undefined): number | nul
   return rounded;
 }
 
+export const BODY_WEIGHT_ERROR = "Usa un número entre 20 y 400, con máximo un decimal";
+export const BODY_WEIGHT_NUMERIC_ERROR = "El peso debe ser un número";
+
+export type BodyWeightParse =
+  | { state: "empty"; weightKg: null }
+  | { state: "incomplete" }
+  | { state: "ok"; weightKg: number }
+  | { state: "error"; message: string };
+
+/** '60,4' and '60.4' are 60.4. A non-number says so. Range and extra decimals use BODY_WEIGHT_ERROR. */
+export function parseBodyWeightInput(raw: string): BodyWeightParse {
+  const trimmed = raw.trim();
+  if (!trimmed) return { state: "empty", weightKg: null };
+  if (/^\d+[.,]$/.test(trimmed)) return { state: "incomplete" };
+  const normalized = trimmed.replace(",", ".");
+  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
+    return { state: "error", message: BODY_WEIGHT_NUMERIC_ERROR };
+  }
+  const fraction = normalized.split(".")[1];
+  const weightKg = Number(normalized);
+  if (
+    (fraction && fraction.length > 1) ||
+    !Number.isFinite(weightKg) ||
+    weightKg < WEIGHT_KG_MIN ||
+    weightKg > WEIGHT_KG_MAX
+  ) {
+    return { state: "error", message: BODY_WEIGHT_ERROR };
+  }
+  return { state: "ok", weightKg };
+}
+
+export function formatBodyWeight(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  return String(value);
+}
+
+/** Body weight the diary may trust. Extra decimals and values outside 20..400 stay unset. */
+export function acceptedBodyWeightKg(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const rounded = Math.round(value * 10) / 10;
+  if (Math.abs(value - rounded) > 1e-6) return null;
+  if (rounded < WEIGHT_KG_MIN || rounded > WEIGHT_KG_MAX) return null;
+  return rounded;
+}
+
 /** Editor write. Empty stays empty. A typed number outside the range is clipped, not cleared. */
 export function clipDailyTarget(value: unknown, max: number, min = PROTEIN_TARGET_MIN): number | null {
   if (value == null || value === "") return null;
@@ -100,7 +145,7 @@ export function clipDailyTarget(value: unknown, max: number, min = PROTEIN_TARGE
   return rounded;
 }
 
-/** Diary denominator. Weight-derived grams are a later phase and are not used here. */
+/** Explicit grams stored by hand or after confirming the weight suggestion. */
 export function manualProteinGoal(user: { proteinTargetG?: number | null } | null | undefined): number | null {
   return clampDailyTarget(user?.proteinTargetG, PROTEIN_TARGET_MAX);
 }
@@ -109,15 +154,52 @@ export function manualKcalGoal(user: { kcalTarget?: number | null } | null | und
   return clampDailyTarget(user?.kcalTarget, KCAL_TARGET_MAX, KCAL_TARGET_MIN);
 }
 
-/** Protein grams from body weight. There is no kcal formula here. */
+/** Protein grams from body weight, 1.8 g/kg. There is no kcal formula here. */
 export function weightProteinSuggestion(weightKg: number | null | undefined): number | null {
-  if (typeof weightKg !== "number" || !Number.isFinite(weightKg) || weightKg <= 0) return null;
-  return clampDailyTarget(proteinTargetG(weightKg), PROTEIN_TARGET_MAX);
+  const weight = acceptedBodyWeightKg(weightKg);
+  if (weight == null) return null;
+  return clampDailyTarget(proteinTargetG(weight), PROTEIN_TARGET_MAX);
 }
 
-/** A manual protein goal is replaced only after the person confirms. */
+/**
+ * Diary line only. A stored goal wins. With none set, the weight suggestion
+ * is shown and is not written until the person confirms it.
+ */
+export function diaryProteinGoal(
+  user: { proteinTargetG?: number | null; weightKg?: number | null } | null | undefined,
+): number | null {
+  const manual = manualProteinGoal(user);
+  if (manual != null) return manual;
+  return weightProteinSuggestion(user?.weightKg);
+}
+
+export const WEIGHT_PROTEIN_ACTION = "Calcular según mi peso";
+
+/** `60 kg → 108 g`. Null when the weight cannot suggest a goal. */
+export function weightProteinLabel(weightKg: number | null | undefined): string | null {
+  const weight = acceptedBodyWeightKg(weightKg);
+  const grams = weightProteinSuggestion(weight);
+  if (weight == null || grams == null) return null;
+  return `${String(weight).replace(".", ",")} kg → ${grams} g`;
+}
+
+/**
+ * The stored protein goal never follows weight by itself.
+ * `confirmed` is the only path that copies the 1.8 g/kg suggestion.
+ */
+export function proteinGoalAfterConfirm(
+  currentProtein: number | null | undefined,
+  suggestion: number | null | undefined,
+  confirmed: boolean,
+): number | null {
+  const stored = manualProteinGoal({ proteinTargetG: currentProtein });
+  if (!confirmed || suggestion == null) return stored;
+  return clampDailyTarget(suggestion, PROTEIN_TARGET_MAX) ?? stored;
+}
+
+/** True when the suggestion differs from the stored goal, including an empty goal. */
 export function proteinGoalNeedsConfirm(current: number | null, suggestion: number | null): boolean {
-  if (suggestion == null || current == null) return false;
+  if (suggestion == null) return false;
   return current !== suggestion;
 }
 
@@ -158,10 +240,12 @@ export function normalizeMealEntry(value: unknown): MealEntry {
       items.push({ id, name, grams, proteinG, carbsG, fatG });
     });
   }
+  const cleared = raw.cleared === true;
   return {
     time: normalizeTime(raw.time),
     items,
     note: typeof raw.note === "string" ? raw.note : "",
+    ...(cleared ? { cleared: true as const } : {}),
   };
 }
 
@@ -208,10 +292,18 @@ function mergeMealItems(older: MealItem[], newer: MealItem[]): MealItem[] {
   return out;
 }
 
-/** Newer slot wins field by field. An empty newer slot does not erase a filled one. */
+/** Newer slot wins field by field. An empty newer slot does not erase a filled one, unless it was cleared. */
 export function mergeMealSlot(olderValue: unknown, newerValue: unknown): MealEntry {
   const older = normalizeMealEntry(olderValue);
   const newer = normalizeMealEntry(newerValue);
+  if (newer.cleared) {
+    return {
+      time: newer.time ?? older.time,
+      note: newer.note.trim() ? newer.note : older.note,
+      items: newer.items,
+      cleared: true,
+    };
+  }
   if (!slotHasContent(newer)) return older;
   if (!slotHasContent(older)) return newer;
   return {
@@ -340,12 +432,12 @@ export function formatTotals(totals: MacroTotals, goal?: number | null, kcalGoal
   return `${p} · C ${formatMacro(totals.carbsG)} · G ${formatMacro(totals.fatG)} · ${energy}`;
 }
 
-/** Day line. Protein and kcal goals are the manual targets, never the weight formula. */
+/** Day line. A stored goal wins. Otherwise the weight suggestion is shown and stays unsaved. */
 export function formatDayTotals(
   totals: MacroTotals,
-  user: { proteinTargetG?: number | null; kcalTarget?: number | null } | null | undefined,
+  user: { proteinTargetG?: number | null; kcalTarget?: number | null; weightKg?: number | null } | null | undefined,
 ): string {
-  return formatTotals(totals, manualProteinGoal(user), manualKcalGoal(user));
+  return formatTotals(totals, diaryProteinGoal(user), manualKcalGoal(user));
 }
 
 export function mealSummary(value: unknown): string {
@@ -572,15 +664,15 @@ export function nutritionComment(user: User, meals: unknown): string {
   const gaps = flags.gaps.map((slot) => slot.label.toLowerCase());
   const bits: string[] = [];
 
-  const manual = manualProteinGoal(user);
+  const goal = diaryProteinGoal(user);
   if (user.nutritionGoal === "surplus_muscle") {
     if (hasMacros) {
       const protein = Math.round(totals.proteinG);
-      if (manual != null) {
+      if (goal != null) {
         bits.push(
-          protein >= manual
-            ? `Proteína de hoy: ${protein} g, en la meta de ${manual} g para recuperar músculo.`
-            : `Proteína de hoy: ${protein} g de ${manual} g. Aún cabe más para ganar músculo.`,
+          protein >= goal
+            ? `Proteína de hoy: ${protein} g, en la meta de ${goal} g para recuperar músculo.`
+            : `Proteína de hoy: ${protein} g de ${goal} g. Aún cabe más para ganar músculo.`,
         );
       } else if (flags.protein) {
         bits.push("La proteína aparece en los alimentos, eso ayuda a la masa muscular.");
@@ -620,12 +712,12 @@ export function nutritionComment(user: User, meals: unknown): string {
     bits.push(`Si hay hueco, un extra en ${gaps[0]?.toLowerCase()} suma calorías sin forzar el estómago.`);
   }
 
-  if (!hasMacros && manual != null) {
+  if (!hasMacros && goal != null) {
     const kcal = manualKcalGoal(user);
     bits.push(
       kcal != null
-        ? `Objetivo: ${manual} g de proteína y ${kcal} kcal al día, con entrenos de fuerza.`
-        : `Objetivo: ${manual} g de proteína al día y un superávit suave (300–500 kcal) con entrenos de fuerza.`,
+        ? `Objetivo: ${goal} g de proteína y ${kcal} kcal al día, con entrenos de fuerza.`
+        : `Objetivo: ${goal} g de proteína al día y un superávit suave (300–500 kcal) con entrenos de fuerza.`,
     );
   }
 
@@ -672,6 +764,8 @@ export function upsertFoodDay(args: {
   rawInput?: string;
   now?: string;
   createId?: () => string;
+  /** Slot the editor just saved. An empty item list here is an explicit clear. */
+  editedSlot?: MealSlot;
 }): { foodDays: FoodDay[]; saved: FoodDay } {
   const list = args.foodDays ?? [];
   const existing = list.find((day) => day.userId === args.userId && day.date === args.date) ?? null;
@@ -679,6 +773,17 @@ export function upsertFoodDay(args: {
   const overlaid = args.meals == null ? base : { ...base, ...mealPatch(args.meals) };
   const parsed = args.rawInput?.trim() ? parseMealDump(args.rawInput, overlaid) : overlaid;
   const meals = compactMealLog(parsed);
+  if (args.editedSlot) {
+    const slot = args.editedSlot;
+    const hadItems = base[slot].items.length > 0;
+    if (meals[slot].items.length === 0 && hadItems) {
+      meals[slot] = { ...meals[slot], cleared: true };
+    } else if (meals[slot].items.length > 0 && meals[slot].cleared) {
+      const nextSlot = { ...meals[slot] };
+      delete nextSlot.cleared;
+      meals[slot] = nextSlot;
+    }
+  }
   const saved: FoodDay = {
     id: existing?.id ?? args.createId?.() ?? nid(),
     userId: args.userId,

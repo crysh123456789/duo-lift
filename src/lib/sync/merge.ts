@@ -1,4 +1,4 @@
-import { collapseFoodDays } from "@/lib/nutrition";
+import { collapseFoodDays, MEAL_SLOTS, normalizeMealLog } from "@/lib/nutrition";
 import {
   KCAL_TARGET_MAX,
   KCAL_TARGET_MIN,
@@ -216,15 +216,18 @@ export function mergeRemoteSnapshot(
       (row) => row.createdAt,
     ),
     workingLoads: mergeLoads(local, remote, seed, tombstones, ack, preferLocal),
-    foodDays: mergeList(
-      "foodDays",
-      collapseFoodDays(local.foodDays ?? []),
-      collapseFoodDays(remote.foodDays ?? []),
-      seed.foodDays ?? [],
+    foodDays: stripMealItems(
+      mergeList(
+        "foodDays",
+        collapseFoodDays(local.foodDays ?? []),
+        collapseFoodDays(remote.foodDays ?? []),
+        seed.foodDays ?? [],
+        tombstones,
+        ack,
+        preferLocal,
+        (row) => row.updatedAt,
+      ),
       tombstones,
-      ack,
-      preferLocal,
-      (row) => row.updatedAt,
     ),
     reminders: mergeReminders(
       local.reminders,
@@ -245,7 +248,10 @@ function applyTombstones(local: GymData, tombstones: Tombstone[]): GymData {
   const sets = local.sets.filter((row) => !drop("sets").has(row.id));
   const reactions = local.reactions.filter((row) => !drop("reactions").has(row.id));
   const exercises = local.exercises.filter((row) => !drop("exercises").has(row.id));
-  const foodDays = (local.foodDays ?? []).filter((row) => !drop("foodDays").has(row.id));
+  const foodDays = stripMealItems(
+    (local.foodDays ?? []).filter((row) => !drop("foodDays").has(row.id)),
+    tombstones,
+  );
   const loadDrop = drop("workingLoads");
   const workingLoads = Object.fromEntries(
     Object.entries(local.workingLoads ?? {}).filter(([key]) => !loadDrop.has(key)),
@@ -282,10 +288,33 @@ function mergeTarget(
   return localValue;
 }
 
+function finiteOrNull(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** A null phone value does not hide a height or weight stored on the server. */
+function mergePresentNumber(
+  local: number | null | undefined,
+  remote: number | null | undefined,
+  localEditAt: string | null | undefined,
+  remoteAt: string | null | undefined,
+): number | null {
+  const localValue = finiteOrNull(local);
+  const remoteValue = finiteOrNull(remote);
+  if (localValue != null && localEditAt && (!remoteAt || localEditAt > remoteAt)) return localValue;
+  if (remoteValue != null) return remoteValue;
+  return localValue;
+}
+
 function withServerTargets(chosen: User, local: User | undefined, remote: User | undefined): User {
   const remoteAt = remote?.targetsUpdatedAt ?? null;
+  const remoteProfileAt = remote?.profileUpdatedAt ?? null;
   return {
     ...chosen,
+    heightCm: mergePresentNumber(local?.heightCm, remote?.heightCm, local?.profileEditedAt, remoteProfileAt),
+    weightKg: mergePresentNumber(local?.weightKg, remote?.weightKg, local?.profileEditedAt, remoteProfileAt),
+    profileUpdatedAt: remoteProfileAt ?? local?.profileUpdatedAt ?? null,
+    profileEditedAt: local?.profileEditedAt ?? null,
     proteinTargetG: mergeTarget(
       local?.proteinTargetG,
       remote?.proteinTargetG,
@@ -317,15 +346,21 @@ export function usersWithServerTargets(local: User[], merged: User[]): User[] {
     const fromServer = byId.get(row.id);
     if (!fromServer) return row;
     const serverClock = fromServer.targetsUpdatedAt ?? null;
+    const profileClock = fromServer.profileUpdatedAt ?? null;
     const keepProtein = Boolean(row.proteinTargetUpdatedAt && (!serverClock || row.proteinTargetUpdatedAt > serverClock));
     const keepKcal = Boolean(row.kcalTargetUpdatedAt && (!serverClock || row.kcalTargetUpdatedAt > serverClock));
+    const keepProfile = Boolean(row.profileEditedAt && (!profileClock || row.profileEditedAt > profileClock));
     return {
       ...row,
+      heightCm: keepProfile && row.heightCm != null ? row.heightCm : (fromServer.heightCm ?? row.heightCm ?? null),
+      weightKg: keepProfile && row.weightKg != null ? row.weightKg : (fromServer.weightKg ?? row.weightKg ?? null),
       proteinTargetG: keepProtein ? (row.proteinTargetG ?? null) : (fromServer.proteinTargetG ?? null),
       kcalTarget: keepKcal ? (row.kcalTarget ?? null) : (fromServer.kcalTarget ?? null),
       targetsUpdatedAt: serverClock ?? row.targetsUpdatedAt ?? null,
+      profileUpdatedAt: profileClock ?? row.profileUpdatedAt ?? null,
       proteinTargetUpdatedAt: row.proteinTargetUpdatedAt ?? fromServer.proteinTargetUpdatedAt ?? null,
       kcalTargetUpdatedAt: row.kcalTargetUpdatedAt ?? fromServer.kcalTargetUpdatedAt ?? null,
+      profileEditedAt: row.profileEditedAt ?? fromServer.profileEditedAt ?? null,
     };
   });
   for (const row of merged) {
@@ -439,6 +474,59 @@ function mergeLoads(
   return out;
 }
 
+const MEAL_ITEM_ID = /^[A-Za-z0-9_-]{1,80}$/;
+
+function mealItemIds(day: FoodDay): string[] {
+  const meals = normalizeMealLog(day.meals);
+  const ids: string[] = [];
+  for (const slot of MEAL_SLOTS) {
+    for (const item of meals[slot.id].items) {
+      if (item.id) ids.push(item.id);
+    }
+  }
+  return ids;
+}
+
+/** Item ids removed from a day that still exists. A deleted day uses the foodDays tombstone. */
+export function clearedMealItemTombstones(prev: GymData, next: GymData): Tombstone[] {
+  const surviving = new Map<string, Set<string>>();
+  for (const day of next.foodDays ?? []) {
+    const key = `${day.userId}|${day.date}`;
+    const ids = surviving.get(key) ?? new Set<string>();
+    for (const id of mealItemIds(day)) ids.add(id);
+    surviving.set(key, ids);
+  }
+  const out: Tombstone[] = [];
+  const seen = new Set<string>();
+  for (const day of prev.foodDays ?? []) {
+    const kept = surviving.get(`${day.userId}|${day.date}`);
+    if (!kept) continue;
+    for (const id of mealItemIds(day)) {
+      if (kept.has(id) || seen.has(id) || !MEAL_ITEM_ID.test(id)) continue;
+      seen.add(id);
+      out.push({ entity: "mealItems", id });
+    }
+  }
+  return out;
+}
+
+export function stripMealItems(days: FoodDay[], tombstones: Tombstone[]): FoodDay[] {
+  const dropped = droppedIds(tombstones, "mealItems");
+  if (dropped.size === 0) return days;
+  return days.map((day) => {
+    const meals = normalizeMealLog(day.meals);
+    let changed = false;
+    for (const slot of MEAL_SLOTS) {
+      const items = meals[slot.id].items.filter((item) => !dropped.has(item.id));
+      if (items.length !== meals[slot.id].items.length) {
+        meals[slot.id] = { ...meals[slot.id], items };
+        changed = true;
+      }
+    }
+    return changed ? { ...day, meals } : day;
+  });
+}
+
 export function collectTombstones(prev: GymData, next: GymData): Tombstone[] {
   const out: Tombstone[] = [];
   for (const entity of LIST_ENTITIES) {
@@ -466,6 +554,7 @@ export function collectTombstones(prev: GymData, next: GymData): Tombstone[] {
     const id = `${row.duoId}:${row.userId}`;
     if (!nextMembers.has(id)) out.push({ entity: "members", id });
   }
+  out.push(...clearedMealItemTombstones(prev, next));
   return out.filter((row) => isTombstoneEntity(row.entity));
 }
 
@@ -492,6 +581,7 @@ function withoutLocalTargetEdits(data: GymData): GymData {
       const next = { ...row };
       delete next.proteinTargetUpdatedAt;
       delete next.kcalTargetUpdatedAt;
+      delete next.profileEditedAt;
       return next;
     }),
   };
