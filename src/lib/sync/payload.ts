@@ -3,7 +3,8 @@ import {
   KCAL_TARGET_MIN,
   PROTEIN_TARGET_MAX,
   PROTEIN_TARGET_MIN,
-  clampDailyTarget,
+  clipDailyTarget,
+  syncBodyWeightKg,
 } from "@/lib/nutrition";
 import type { GymData } from "@/lib/types";
 import { canonicalize, snapshotFromState } from "./snapshot";
@@ -53,12 +54,6 @@ function laterStamp(left?: string | null, right?: string | null): string | null 
   return left > right ? left : right;
 }
 
-/** Whole kilograms. sync_apply rejects a fractional body weight. */
-function syncWeightKg(value: number | null | undefined): number | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  return Math.round(value);
-}
-
 /** Snake-case body for `public.sync_apply`. Child rows keep the snapshot's duo id. */
 export function toSyncPayload(data: GymData, tombstones: Tombstone[]) {
   const snapshot = canonicalize(data);
@@ -75,8 +70,8 @@ export function toSyncPayload(data: GymData, tombstones: Tombstone[]) {
       .map((row) => {
         const proteinTouched = Boolean(row.proteinTargetUpdatedAt);
         const kcalTouched = Boolean(row.kcalTargetUpdatedAt);
-        const protein = clampDailyTarget(row.proteinTargetG, PROTEIN_TARGET_MAX, PROTEIN_TARGET_MIN);
-        const kcal = clampDailyTarget(row.kcalTarget, KCAL_TARGET_MAX, KCAL_TARGET_MIN);
+        const protein = clipDailyTarget(row.proteinTargetG, PROTEIN_TARGET_MAX, PROTEIN_TARGET_MIN);
+        const kcal = clipDailyTarget(row.kcalTarget, KCAL_TARGET_MAX, KCAL_TARGET_MIN);
         const user: Record<string, unknown> = {
           id: row.id,
           email: row.email,
@@ -84,7 +79,7 @@ export function toSyncPayload(data: GymData, tombstones: Tombstone[]) {
           avatar_hue: row.avatarHue,
           unit_system: row.unitSystem,
           height_cm: row.heightCm,
-          weight_kg: syncWeightKg(row.weightKg),
+          weight_kg: syncBodyWeightKg(row.weightKg),
           nutrition_goal: row.nutritionGoal,
           created_at: row.createdAt,
         };

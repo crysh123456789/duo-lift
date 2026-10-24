@@ -73,17 +73,48 @@ describe("sync_apply nutrition limits", () => {
     assert.equal(guard >= 0 && foodWrite > guard, true);
   });
 
-  test("rejects non-integers and out-of-range protein, kcal, and weight", () => {
+  test("rejects non-integers and out-of-range protein and kcal", () => {
     assert.match(sync, /raise exception 'protein_target_g must be an integer'/);
     assert.match(sync, /raise exception 'protein_target_g out of range'/);
     assert.match(sync, /protein_num < 0 or protein_num > 500/);
     assert.match(sync, /raise exception 'kcal_target must be an integer'/);
     assert.match(sync, /raise exception 'kcal_target out of range'/);
     assert.match(sync, /kcal_num < 0 or kcal_num > 10000/);
-    assert.match(sync, /raise exception 'weight_kg must be an integer'/);
+    const check = sync.indexOf("raise exception 'protein_target_g out of range'");
+    const write = sync.indexOf("update public.users as dest");
+    assert.equal(check >= 0 && write > check, true);
+  });
+
+  test("weight_kg accepts 60.4 and rejects 10 and 400.5", () => {
+    assert.equal(/weight_kg must be an integer/.test(sync), false);
+    assert.match(sync, /weight_num <> round\(weight_num, 1\)/);
+    assert.match(sync, /raise exception 'weight_kg must have at most 1 decimal'/);
     assert.match(sync, /raise exception 'weight_kg out of range'/);
     assert.match(sync, /weight_num < 20 or weight_num > 400/);
-    const check = sync.indexOf("raise exception 'protein_target_g out of range'");
+    const decimal = sync.indexOf("weight_num <> round(weight_num, 1)");
+    const range = sync.indexOf("weight_num < 20 or weight_num > 400");
+    const write = sync.indexOf("update public.users as dest");
+    assert.equal(decimal >= 0 && range > decimal && write > range, true);
+  });
+
+  test("casts public.users.weight_kg to numeric(5,1) from the stored value", () => {
+    assert.match(
+      sql,
+      /alter table public\.users\s+alter column weight_kg type numeric\(5,1\)\s+using round\(weight_kg::numeric, 1\)::numeric\(5,1\)/,
+    );
+    const alter = sql.indexOf("alter column weight_kg type numeric(5,1)");
+    const fn = sql.indexOf("create or replace function public.sync_apply");
+    assert.equal(alter >= 0 && fn > alter, true);
+    assert.equal(/alter column weight_kg type integer/.test(sql), false);
+  });
+
+  test("rejects targets_updated_at more than 5 minutes in the future before any write", () => {
+    assert.match(sync, /targets_at > now\(\) \+ interval '5 minutes'/);
+    assert.match(
+      sync,
+      /raise exception 'targets_updated_at is more than 5 minutes in the future'/,
+    );
+    const check = sync.indexOf("targets_at > now() + interval '5 minutes'");
     const write = sync.indexOf("update public.users as dest");
     assert.equal(check >= 0 && write > check, true);
   });

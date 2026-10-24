@@ -21,7 +21,10 @@
 --   * a non-null value may fill a null server goal without a clock
 --   * protein_target_g must be an integer in 0..500
 --   * kcal_target must be an integer in 0..10000
---   * weight_kg, when present, must be an integer in 20..400
+--   * public.users.weight_kg becomes numeric(5,1); existing values cast in place
+--   * weight_kg, when present, is numeric in 20..400 with at most 1 decimal
+--     (60.4 is valid; more than one decimal or anything outside 20..400 errors)
+--   * targets_updated_at more than 5 minutes ahead of now() errors before any write
 --   * food_days limits and rejected.food_days are unchanged
 
 do $drop_claim$
@@ -59,6 +62,12 @@ set targets_updated_at = now()
 where targets_updated_at is null
   and (protein_target_g is not null or kcal_target is not null);
 
+-- The column is integer today. Whole kilograms cast exactly (60 -> 60.0).
+-- A value that is already numeric rounds to one decimal, which fits numeric(5,1).
+alter table public.users
+  alter column weight_kg type numeric(5,1)
+  using round(weight_kg::numeric, 1)::numeric(5,1);
+
 create or replace function public.sync_apply(payload jsonb)
 returns jsonb
 language plpgsql
@@ -86,6 +95,7 @@ declare
   protein_num numeric;
   kcal_num numeric;
   weight_num numeric;
+  targets_at timestamptz;
 begin
   if v_uid is null then
     raise exception 'not_authenticated' using errcode = '28000';
@@ -121,10 +131,11 @@ begin
     );
   end if;
 
-  -- Integers only. protein_target_g is 0..500 g, kcal_target is 0..10000,
-  -- weight_kg is 20..400 kg when the payload includes a number.
+  -- protein_target_g is an integer 0..500 g, kcal_target is an integer 0..10000.
+  -- weight_kg, when present, is numeric 20..400 kg with at most one decimal.
   -- A null or absent target must not erase a server goal. Nulling a goal
   -- requires targets_updated_at strictly newer than the row clock.
+  -- A clock more than 5 minutes ahead of now() is rejected before any write.
   for user_el in
     select value
     from jsonb_array_elements(coalesce(payload->'users', '[]'::jsonb))
@@ -139,10 +150,10 @@ begin
         weight_num := weight_text::numeric;
       exception
         when others then
-          raise exception 'weight_kg must be an integer' using errcode = '22023';
+          raise exception 'weight_kg must have at most 1 decimal' using errcode = '22023';
       end;
-      if weight_num <> trunc(weight_num) then
-        raise exception 'weight_kg must be an integer' using errcode = '22023';
+      if weight_num <> round(weight_num, 1) then
+        raise exception 'weight_kg must have at most 1 decimal' using errcode = '22023';
       end if;
       if weight_num < 20 or weight_num > 400 then
         raise exception 'weight_kg out of range' using errcode = '22023';
@@ -187,11 +198,15 @@ begin
         raise exception 'targets_updated_at must be a timestamp' using errcode = '22023';
       end if;
       begin
-        perform (user_el->>'targets_updated_at')::timestamptz;
+        targets_at := (user_el->>'targets_updated_at')::timestamptz;
       exception
         when others then
           raise exception 'targets_updated_at must be a timestamp' using errcode = '22023';
       end;
+      if targets_at > now() + interval '5 minutes' then
+        raise exception 'targets_updated_at is more than 5 minutes in the future'
+          using errcode = '22023';
+      end if;
     end if;
   end loop;
 

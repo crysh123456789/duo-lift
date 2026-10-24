@@ -10,9 +10,10 @@ export const TARGET_LIMIT_ERRORS = [
   "protein_target_g out of range",
   "kcal_target must be an integer",
   "kcal_target out of range",
-  "weight_kg must be an integer",
+  "weight_kg must have at most 1 decimal",
   "weight_kg out of range",
   "targets_updated_at must be a timestamp",
+  "targets_updated_at is more than 5 minutes in the future",
 ] as const;
 
 export const SYNC_APPLY_INPUT_ERRORS = [...FOOD_DAY_LIMIT_ERRORS, ...TARGET_LIMIT_ERRORS] as const;

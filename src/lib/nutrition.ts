@@ -65,6 +65,8 @@ export const PROTEIN_TARGET_MIN = 0;
 export const PROTEIN_TARGET_MAX = 500;
 export const KCAL_TARGET_MIN = 0;
 export const KCAL_TARGET_MAX = 10000;
+export const WEIGHT_KG_MIN = 20;
+export const WEIGHT_KG_MAX = 400;
 
 export function clampDailyTarget(value: unknown, max: number, min = PROTEIN_TARGET_MIN): number | null {
   if (value == null || value === "") return null;
@@ -72,6 +74,18 @@ export function clampDailyTarget(value: unknown, max: number, min = PROTEIN_TARG
   if (!Number.isFinite(parsed)) return null;
   const rounded = Math.round(parsed);
   if (rounded < min || rounded > max) return null;
+  return rounded;
+}
+
+/**
+ * Body weight written by sync_apply. Null stays unset.
+ * One decimal, then clamped to 20..400 so a phone value cannot fail the batch.
+ */
+export function syncBodyWeightKg(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const rounded = Math.round(value * 10) / 10;
+  if (rounded < WEIGHT_KG_MIN) return WEIGHT_KG_MIN;
+  if (rounded > WEIGHT_KG_MAX) return WEIGHT_KG_MAX;
   return rounded;
 }
 

@@ -37,7 +37,15 @@ describe("rejected food days", () => {
     assert.equal(clearFoodDayLimitError("payload too large"), null);
     assert.equal(clearFoodDayLimitError("duplicate key value"), null);
     assert.equal(clearSyncApplyError("protein_target_g out of range"), "protein_target_g out of range");
-    assert.equal(clearSyncApplyError("weight_kg must be an integer"), "weight_kg must be an integer");
+    assert.equal(
+      clearSyncApplyError("weight_kg must have at most 1 decimal"),
+      "weight_kg must have at most 1 decimal",
+    );
+    assert.equal(clearSyncApplyError("weight_kg out of range"), "weight_kg out of range");
+    assert.equal(
+      clearSyncApplyError("targets_updated_at is more than 5 minutes in the future"),
+      "targets_updated_at is more than 5 minutes in the future",
+    );
     assert.equal(clearSyncApplyError("too many food_days"), "too many food_days");
     assert.equal(clearSyncApplyError("duplicate key value"), null);
   });

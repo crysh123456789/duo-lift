@@ -29,7 +29,7 @@ export const users = pgTable("users", {
   avatarHue: integer("avatar_hue").notNull().default(78),
   unitSystem: text("unit_system").notNull().default("kg"),
   heightCm: numeric("height_cm"),
-  weightKg: numeric("weight_kg"),
+  weightKg: numeric("weight_kg", { precision: 5, scale: 1 }),
   nutritionGoal: text("nutrition_goal"),
   proteinTargetG: integer("protein_target_g"),
   kcalTarget: integer("kcal_target"),

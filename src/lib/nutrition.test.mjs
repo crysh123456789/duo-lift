@@ -215,6 +215,28 @@ describe("manual nutrition goals", () => {
     assert.equal(data.users[0].kcalTarget, 2200);
     assert.equal(data.users[0].targetsUpdatedAt, "2026-10-24T15:00:00.000Z");
   });
+
+  test("the sync payload rounds weight to 1 decimal and clamps targets before send", () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const sent = (patch) =>
+      toSyncPayload(gym({ users: [{ ...cristian, id, ...patch }] }), []).users[0];
+    assert.equal(sent({ weightKg: 60.4 }).weight_kg, 60.4);
+    assert.equal(sent({ weightKg: 60.44 }).weight_kg, 60.4);
+    assert.equal(sent({ weightKg: 10 }).weight_kg, 20);
+    assert.equal(sent({ weightKg: 400.5 }).weight_kg, 400);
+    assert.notEqual(sent({ weightKg: 10 }).weight_kg, 10);
+    assert.notEqual(sent({ weightKg: 400.5 }).weight_kg, 400.5);
+    const clipped = sent({
+      proteinTargetG: 900.6,
+      kcalTarget: 25000.4,
+      weightKg: 60.4,
+      proteinTargetUpdatedAt: "2026-10-24T16:00:00.000Z",
+      kcalTargetUpdatedAt: "2026-10-24T16:00:00.000Z",
+    });
+    assert.equal(clipped.protein_target_g, 500);
+    assert.equal(clipped.kcal_target, 10000);
+    assert.equal(clipped.weight_kg, 60.4);
+  });
 });
 
 describe("duplicate food days", () => {
