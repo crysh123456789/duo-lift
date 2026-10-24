@@ -1,4 +1,4 @@
-/** Which auth user the sync loop may upload. Null until the claim choice is done. */
+/** Which auth user the sync loop may upload. Null until sign-in settles. */
 
 let userId: string | null = null;
 const listeners = new Set<() => void>();

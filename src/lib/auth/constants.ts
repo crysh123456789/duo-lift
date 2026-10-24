@@ -1,10 +1,10 @@
-/** Profile and claim constants. Identity is auth.uid(), never these labels. */
+/** Profile constants. Identity is auth.uid(). Legacy keys only retag a decision already stored. */
 
 export const MIN_PASSWORD_LENGTH = 8;
 
 export const LEGACY_HISTORIES = [
-  { key: "cristian", userId: "user-cristian", label: "Historial de Cristian" },
-  { key: "kviedes", userId: "user-amigo", label: "Historial de Kviedes" },
+  { key: "cristian", userId: "user-cristian" },
+  { key: "kviedes", userId: "user-amigo" },
 ] as const;
 
 export type LegacyKey = (typeof LEGACY_HISTORIES)[number]["key"];
