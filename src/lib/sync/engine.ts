@@ -5,10 +5,11 @@ import { useGymStore } from "@/lib/store";
 import type { GymData } from "@/lib/types";
 import { ackMap, collectTombstones, snapshotsMatch, usersWithServerTargets } from "./merge";
 import { parseSnapshot, parseTombstones } from "./payload";
-import { prepareSyncSnapshot, retainUnsentDuplicateSets, serverKeptWorkouts, tombstonesForRound } from "./round";
+import { missingWorkoutIds, prepareSyncSnapshot, retainUnsentDuplicateSets, tombstonesForRound } from "./round";
 import { getSyncUserId, subscribeSyncUser } from "./session-user";
 import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import { snapshotFromState } from "./snapshot";
+import { applySyncItemResults, syncItemResults } from "./items";
 import { rejectedFoodDays } from "./rejected";
 import { markServerHydrated, setFoodDayRejection, setSyncPhase } from "./status";
 import {
@@ -32,6 +33,7 @@ type SyncResponse = {
   tombstones?: unknown;
   error?: string;
   rejected?: unknown;
+  items?: unknown;
 };
 
 let applying = false;
@@ -225,8 +227,23 @@ export function startGymSync() {
             `food days rejected: ${rejected.map((row) => `${row.id} (${row.reason})`).join(", ")}`,
           );
         }
+        const outcomes = syncItemResults(pushed);
+        const decision = applySyncItemResults(ownSnapshot(userId), outcomes);
+        if (decision.tombstones.length > 0) addTombstones(decision.tombstones);
+        if (!snapshotsMatch(decision.data, ownSnapshot(userId), ignoreReminders)) {
+          applyOwn(decision.data, userId);
+          logSync(
+            `dropped ${outcomes.map((row) => `${row.entity}:${row.id} (${row.status})`).join(", ")}`,
+          );
+        }
         const returned = pushed.data ? parseSnapshot(pushed.data) : null;
-        if (!serverKeptWorkouts(prepared.snapshot, returned, prepared.tombstones)) {
+        const skippedWorkouts = new Set(
+          outcomes.filter((row) => row.entity === "workouts").map((row) => row.id),
+        );
+        const missingWorkouts = missingWorkoutIds(prepared.snapshot, returned, prepared.tombstones).filter(
+          (id) => !skippedWorkouts.has(id),
+        );
+        if (!returned || missingWorkouts.length > 0) {
           logSync("server ack did not include the phone workouts");
           settle("error");
           return;

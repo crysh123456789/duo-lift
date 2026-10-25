@@ -101,7 +101,12 @@ export async function PUT(request: Request) {
   try {
     const written = await writeOwn(session.supabase, snapshot, tombstones);
     const remote = await readOwn(session.supabase, session.userId);
-    const missing = missingWorkoutIds(snapshot, remote.data, tombstones);
+    const skippedWorkouts = new Set(
+      written.items.filter((row) => row.entity === "workouts").map((row) => row.id),
+    );
+    const missing = missingWorkoutIds(snapshot, remote.data, tombstones).filter(
+      (id) => !skippedWorkouts.has(id),
+    );
     if (missing.length > 0) {
       console.error(`[sync] write incomplete: ${missing.length} workouts were not stored`);
       return json({ ok: false, enabled: true, error: "No se pudo confirmar el historial." }, 502);
@@ -115,6 +120,7 @@ export async function PUT(request: Request) {
       data: remote.data,
       tombstones: remote.tombstones,
       rejected: written.rejected,
+      items: written.items,
     });
   } catch (error) {
     logSyncFailure("write", error);
