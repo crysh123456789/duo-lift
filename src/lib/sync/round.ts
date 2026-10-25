@@ -7,8 +7,8 @@ import { canonicalize } from "./snapshot";
 import type { Tombstone } from "./types";
 
 /**
- * Set deletes stay in the phone queue until 0015/0016 and the tolerant sync.
- * Sending one makes sync_apply call soft_delete_own_set and the round gets 42501.
+ * With the flag on, set tombstones leave the phone, including ones queued
+ * while deletes were off. With it off they stay in the queue and are not sent.
  */
 function tombstonesSafeToSend(rows: Tombstone[]): Tombstone[] {
   if (SET_DELETE_ENABLED) return rows;
@@ -79,8 +79,9 @@ export function historyPreserved(before: GymData, after: GymData, tombstones: To
 }
 
 /**
- * The upload keeps one live row per slot. The older copy stays on the phone
- * while set deletes are off, so applying the snapshot does not drop it.
+ * The upload keeps one live row per slot. While set deletes are off, the
+ * older copy stays on the phone. With deletes on, the snapshot is the phone
+ * copy: the extra row leaves as a tombstone and is not put back.
  */
 export function retainUnsentDuplicateSets(local: GymData, snapshot: GymData): GymData {
   if (SET_DELETE_ENABLED) return snapshot;

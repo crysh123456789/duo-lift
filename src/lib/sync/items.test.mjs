@@ -113,7 +113,7 @@ describe("sync item results", () => {
     assert.deepEqual(syncItemResults(null), []);
   });
 
-  test("drops rejected and obsolete rows and acknowledges the delete with a tombstone", () => {
+  test("an obsolete series is dropped, a rejected one stays, and only the obsolete id is tombstoned", () => {
     const decision = applySyncItemResults(gym(), [
       { entity: "sets", id: "set-dead", status: "obsolete" },
       { entity: "sets", id: "set-foreign", status: "rejected" },
@@ -121,12 +121,16 @@ describe("sync item results", () => {
     ]);
     assert.deepEqual(
       decision.data.sets.map((row) => row.id),
-      ["set-live"],
+      ["set-live", "set-foreign"],
     );
     assert.deepEqual(decision.data.reactions, []);
     assert.equal(decision.data.foodDays[0].id, "food-1");
     assert.equal(decision.data.workouts[0].id, "w-1");
     assert.deepEqual(decision.tombstones, [{ entity: "sets", id: "set-dead" }]);
+    assert.equal(
+      decision.tombstones.some((row) => row.id === "set-foreign" || row.id === "set-live"),
+      false,
+    );
   });
 
   test("the sync client drops those rows and the route returns them", () => {

@@ -74,16 +74,21 @@ export function omitSyncItems(data: GymData, items: SyncItemResult[]): GymData {
 }
 
 /**
- * Drop rejected and obsolete rows. Obsolete ones are also queued as tombstones
- * so a later merge cannot put the deleted row back.
+ * Drop rejected and obsolete rows. A rejected series stays: it belongs to
+ * someone else. Obsolete rows are also queued as tombstones so a later merge
+ * cannot put the deleted row back.
  */
 export function applySyncItemResults(
   data: GymData,
   results: SyncItemResult[],
 ): { data: GymData; tombstones: Tombstone[] } {
-  const dropped = results.filter(
-    (row) => DROPPED.includes(row.entity) && (row.status === "obsolete" || row.status === "rejected"),
-  );
+  const dropped = results.filter((row) => {
+    if (!DROPPED.includes(row.entity)) return false;
+    if (row.status !== "obsolete" && row.status !== "rejected") return false;
+    // A series rejected as someone else's stays on the phone.
+    if (row.entity === "sets" && row.status === "rejected") return false;
+    return true;
+  });
   const seen = new Set<string>();
   const tombstones: Tombstone[] = [];
   for (const row of dropped) {

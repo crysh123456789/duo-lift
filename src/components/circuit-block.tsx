@@ -200,8 +200,8 @@ export function CircuitBlock({
                 unilateral={station.exercise.isUnilateral}
                 onChange={(patch) => updateSet(set.id, patch)}
                 onDelete={() => {
-                  if (!SET_DELETE_ENABLED) return;
-                  removeSet(set.id);
+                  if (!SET_DELETE_ENABLED) return false;
+                  return removeSet(set.id);
                 }}
               />
             </div>

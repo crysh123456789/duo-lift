@@ -71,7 +71,7 @@ type GymStore = GymData & {
   bumpStationWeight: (stationId: string, delta: number) => void;
   bumpWorkingLoad: (exerciseId: string, delta: number) => void;
   toggleSetComplete: (setId: string) => void;
-  removeSet: (setId: string) => void;
+  removeSet: (setId: string) => boolean;
   addReaction: (workoutId: string, kind: ReactionKind, body?: string) => void;
   addCustomExercise: (payload: {
     name: string;
@@ -521,11 +521,12 @@ export const useGymStore = create<GymStore>()(
         }),
 
       removeSet: (setId) => {
-        if (!SET_DELETE_ENABLED) return;
-        if (!duoUnlocked()) return;
-        if (!get().sets.some((row) => row.id === setId)) return;
+        if (!SET_DELETE_ENABLED) return false;
+        if (!duoUnlocked()) return false;
+        if (!get().sets.some((row) => row.id === setId)) return false;
         queueSetDeletion(setId);
         set((state) => ({ sets: state.sets.filter((row) => row.id !== setId) }));
+        return true;
       },
 
       addReaction: (workoutId, kind, body) =>
