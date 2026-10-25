@@ -2,6 +2,7 @@
 
 import { Check, Minus, Plus, Trash2 } from "lucide-react";
 import { LoggedSetEditor } from "@/components/logged-set-editor";
+import { SET_DELETE_ENABLED } from "@/lib/sets/edit";
 import type { BlockNode, StationNode } from "@/lib/workout-tree";
 import { formatSet } from "@/lib/workout-tree";
 import { formatLoad } from "@/lib/copy";
@@ -198,7 +199,10 @@ export function CircuitBlock({
                 label={`Ronda ${set.roundIndex}`}
                 unilateral={station.exercise.isUnilateral}
                 onChange={(patch) => updateSet(set.id, patch)}
-                onDelete={() => removeSet(set.id)}
+                onDelete={() => {
+                  if (!SET_DELETE_ENABLED) return;
+                  removeSet(set.id);
+                }}
               />
             </div>
           ))}

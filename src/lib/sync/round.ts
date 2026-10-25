@@ -1,9 +1,19 @@
 import { collapseFoodDays } from "@/lib/nutrition";
 import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
+import { SET_DELETE_ENABLED } from "@/lib/sets/edit";
 import type { GymData } from "@/lib/types";
 import { mergeRemoteSnapshot, stripMealItems } from "./merge";
 import { canonicalize } from "./snapshot";
 import type { Tombstone } from "./types";
+
+/**
+ * Set deletes stay in the phone queue until 0015/0016 and the tolerant sync.
+ * Sending one makes sync_apply call soft_delete_own_set and the round gets 42501.
+ */
+function tombstonesSafeToSend(rows: Tombstone[]): Tombstone[] {
+  if (SET_DELETE_ENABLED) return rows;
+  return rows.filter((row) => row.entity !== "sets");
+}
 
 const HISTORY = ["workouts", "blocks", "stations", "sets", "foodDays"] as const;
 
@@ -35,7 +45,11 @@ export function tombstonesForRound(
   ack: Record<string, string>,
 ): Tombstone[] {
   const combined = dedupeTombstones(migrated ? [...remoteStones, ...localStones] : localStones);
-  return combined.filter((row) => forwardsTombstone(localData, row, ack));
+  return tombstonesSafeToSend(combined.filter((row) => forwardsTombstone(localData, row, ack)));
+}
+
+function setSlot(row: { stationId: string; roundIndex: number; setIndex: number }) {
+  return `${row.stationId}\n${row.roundIndex}\n${row.setIndex}`;
 }
 
 /** True when every local history row is still present, or this phone deleted it. */
@@ -52,10 +66,29 @@ export function historyPreserved(before: GymData, after: GymData, tombstones: To
         );
         if (absorbed) continue;
       }
+      if (entity === "sets") {
+        const set = row as GymData["sets"][number];
+        const slot = setSlot(set);
+        const kept = (after.sets ?? []).some((other) => other.id !== set.id && setSlot(other) === slot);
+        if (kept) continue;
+      }
       return false;
     }
   }
   return true;
+}
+
+/**
+ * The upload keeps one live row per slot. The older copy stays on the phone
+ * while set deletes are off, so applying the snapshot does not drop it.
+ */
+export function retainUnsentDuplicateSets(local: GymData, snapshot: GymData): GymData {
+  if (SET_DELETE_ENABLED) return snapshot;
+  const keptSlots = new Set(snapshot.sets.map(setSlot));
+  const sent = new Set(snapshot.sets.map((row) => row.id));
+  const extras = local.sets.filter((row) => !sent.has(row.id) && keptSlots.has(setSlot(row)));
+  if (extras.length === 0) return snapshot;
+  return canonicalize({ ...snapshot, sets: [...snapshot.sets, ...extras] });
 }
 
 export function missingWorkoutIds(sent: GymData, returned: GymData | null, tombstones: Tombstone[]): string[] {
@@ -89,6 +122,7 @@ export function collapseDuplicateSets(data: GymData): { data: GymData; tombstone
     });
     const keep = ranked[0];
     if (keep) sets.push(keep);
+    if (!SET_DELETE_ENABLED) continue;
     for (const extra of ranked.slice(1)) tombstones.push({ entity: "sets", id: extra.id });
   }
   return { data: { ...data, sets }, tombstones };
@@ -116,15 +150,17 @@ export function prepareSyncSnapshot(
   options?: PrepareOptions,
 ): { snapshot: GymData; tombstones: Tombstone[]; keepsHistory: boolean } {
   const ack = options?.ack ?? {};
-  const safeTombstones = tombstones.filter((row) => forwardsTombstone(local, row, ack));
+  const safeTombstones = tombstonesSafeToSend(tombstones.filter((row) => forwardsTombstone(local, row, ack)));
   const merged = mergeRemoteSnapshot(local, remote, safeTombstones, options);
   const collapsedSets = collapseDuplicateSets(merged);
   const collapsed = collapseDuplicateFoodDays(collapsedSets.data);
-  const nextTombstones = dedupeTombstones([
-    ...safeTombstones,
-    ...collapsedSets.tombstones,
-    ...collapsed.tombstones,
-  ]).filter((row) => !isDemoTombstone(row, local));
+  const nextTombstones = tombstonesSafeToSend(
+    dedupeTombstones([
+      ...safeTombstones,
+      ...collapsedSets.tombstones,
+      ...collapsed.tombstones,
+    ]).filter((row) => !isDemoTombstone(row, local)),
+  );
   const snapshot = canonicalize(
     omitSeedHistory({
       ...collapsed.data,

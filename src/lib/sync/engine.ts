@@ -5,7 +5,7 @@ import { useGymStore } from "@/lib/store";
 import type { GymData } from "@/lib/types";
 import { ackMap, collectTombstones, snapshotsMatch, usersWithServerTargets } from "./merge";
 import { parseSnapshot, parseTombstones } from "./payload";
-import { prepareSyncSnapshot, serverKeptWorkouts, tombstonesForRound } from "./round";
+import { prepareSyncSnapshot, retainUnsentDuplicateSets, serverKeptWorkouts, tombstonesForRound } from "./round";
 import { getSyncUserId, subscribeSyncUser } from "./session-user";
 import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import { snapshotFromState } from "./snapshot";
@@ -245,8 +245,9 @@ export function startGymSync() {
         settle("error");
         return;
       }
-      if (!snapshotsMatch(followUp.snapshot, latest, ignoreReminders)) {
-        applyOwn(followUp.snapshot, userId);
+      const keptOnPhone = retainUnsentDuplicateSets(latest, followUp.snapshot);
+      if (!snapshotsMatch(keptOnPhone, latest, ignoreReminders)) {
+        applyOwn(keptOnPhone, userId);
       }
       writeAck(ackMap(prepared.snapshot));
       if (!readSyncMeta().migratedAt) writeSyncMeta({ migratedAt: new Date().toISOString() });

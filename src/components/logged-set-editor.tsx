@@ -1,7 +1,13 @@
 "use client";
 
 import { useId, useState } from "react";
-import { SET_COPY, commitSetDraft, editableSetSnapshot, type SetEditPatch } from "@/lib/sets/edit";
+import {
+  SET_COPY,
+  SET_DELETE_ENABLED,
+  commitSetDraft,
+  editableSetSnapshot,
+  type SetEditPatch,
+} from "@/lib/sets/edit";
 import type { SetLog } from "@/lib/types";
 import { formatSet } from "@/lib/workout-tree";
 import { Button, NumberField } from "./ui";
@@ -17,6 +23,7 @@ export function DeleteSetConfirm({
 }) {
   const titleId = useId();
   const bodyId = useId();
+  if (!SET_DELETE_ENABLED) return null;
   return (
     <div
       role="alertdialog"
@@ -114,13 +121,15 @@ export function LoggedSetEditor({
           <Button className={`${TOUCH} w-full sm:flex-1`} onClick={openEdit}>
             {SET_COPY.edit}
           </Button>
-          <Button
-            variant="danger"
-            className={`${TOUCH} w-full border border-danger/40 sm:flex-1`}
-            onClick={() => setMode("confirm")}
-          >
-            {SET_COPY.delete}
-          </Button>
+          {SET_DELETE_ENABLED ? (
+            <Button
+              variant="danger"
+              className={`${TOUCH} w-full border border-danger/40 sm:flex-1`}
+              onClick={() => setMode("confirm")}
+            >
+              {SET_COPY.delete}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -177,7 +186,7 @@ export function LoggedSetEditor({
         </div>
       ) : null}
 
-      {mode === "confirm" ? (
+      {mode === "confirm" && SET_DELETE_ENABLED ? (
         <div className="mt-3">
           <DeleteSetConfirm onCancel={() => setMode("view")} onConfirm={onDelete} />
         </div>

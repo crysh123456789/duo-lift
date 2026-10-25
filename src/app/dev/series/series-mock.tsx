@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { LoggedSetEditor } from "@/components/logged-set-editor";
+import { SET_DELETE_ENABLED } from "@/lib/sets/edit";
 import { useGymStore } from "@/lib/store";
 
 const MOCK_WORKOUT = "mock-session";
@@ -114,7 +115,10 @@ export function SeriesMock() {
             label={`Serie ${index + 1}`}
             unilateral={false}
             onChange={(patch) => updateSet(set.id, patch)}
-            onDelete={() => removeSet(set.id)}
+            onDelete={() => {
+              if (!SET_DELETE_ENABLED) return;
+              removeSet(set.id);
+            }}
           />
         ))
       )}

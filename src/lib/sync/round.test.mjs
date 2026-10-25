@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createSeed, isLegacySeedId } from "../seed.ts";
+import { SET_DELETE_ENABLED } from "../sets/edit.ts";
+import { addTombstones, readTombstones, removeTombstones, setSyncStorageUser } from "./storage.ts";
 import {
   historyPreserved,
   missingWorkoutIds,
   prepareSyncSnapshot,
+  retainUnsentDuplicateSets,
   serverKeptWorkouts,
   tombstonesForRound,
 } from "./round.ts";
@@ -112,7 +115,8 @@ describe("first upload", () => {
     assert.equal(historyPreserved(before, after, [{ entity: "workouts", id: "w-phone" }]), true);
   });
 
-  test("collapses a duplicate set slot and records a tombstone", () => {
+  test("un slot duplicado no genera tombstone", () => {
+    assert.equal(SET_DELETE_ENABLED, false);
     const local = gym({
       sets: [setRow("set-old", "2026-10-01T18:00:00.000Z"), setRow("set-new", "2026-10-02T18:00:00.000Z")],
     });
@@ -121,11 +125,17 @@ describe("first upload", () => {
       prepared.snapshot.sets.map((row) => row.id),
       ["set-new"],
     );
-    assert.deepEqual(prepared.tombstones, [{ entity: "sets", id: "set-old" }]);
+    assert.deepEqual(prepared.tombstones, []);
     assert.equal(prepared.keepsHistory, true);
+    assert.equal(local.sets.length, 2);
+    const phone = retainUnsentDuplicateSets(local, prepared.snapshot);
+    assert.deepEqual(
+      phone.sets.map((row) => row.id),
+      ["set-new", "set-old"],
+    );
   });
 
-  test("an edited series wins, and a deleted one does not come back from the server", () => {
+  test("an edited series wins", () => {
     const remoteSet = setRow("set-phone", "2026-10-01T18:00:00.000Z");
     const edited = { ...remoteSet, weightKg: 42.5, reps: 6, rpe: 8, loggedAt: "2026-10-25T15:00:00.000Z" };
     const kept = prepareSyncSnapshot(gym({ sets: [edited] }), gym({ sets: [remoteSet] }), [], {
@@ -137,16 +147,47 @@ describe("first upload", () => {
 
     const withoutTombstone = prepareSyncSnapshot(gym({ sets: [] }), gym({ sets: [remoteSet] }), []);
     assert.equal(withoutTombstone.snapshot.sets.some((row) => row.id === "set-phone"), true);
+  });
 
-    const removed = prepareSyncSnapshot(gym({ sets: [] }), gym({ sets: [remoteSet] }), [
-      { entity: "sets", id: "set-phone" },
-    ]);
-    assert.equal(removed.snapshot.sets.some((row) => row.id === "set-phone"), false);
-    assert.equal(
-      removed.tombstones.some((row) => row.entity === "sets" && row.id === "set-phone"),
-      true,
-    );
-    assert.equal(removed.keepsHistory, true);
+  test("un tombstone viejo de serie no se envía, el resto del lote sí, y sigue en la cola", () => {
+    assert.equal(SET_DELETE_ENABLED, false);
+    const memory = new Map();
+    globalThis.localStorage = {
+      getItem: (key) => (memory.has(key) ? memory.get(key) : null),
+      setItem: (key, value) => {
+        memory.set(key, String(value));
+      },
+      removeItem: (key) => {
+        memory.delete(key);
+      },
+      clear: () => memory.clear(),
+    };
+    memory.clear();
+    setSyncStorageUser("11111111-1111-4111-8111-111111111111");
+    const queued = [
+      { entity: "sets", id: "set-vieja" },
+      { entity: "workouts", id: "w-borrado" },
+    ];
+    addTombstones(queued);
+    const local = gym({ workouts: [workout("w-queda", "Sigue")] });
+    const remote = gym({
+      workouts: [workout("w-queda", "Servidor"), workout("w-borrado", "Ya no")],
+      sets: [setRow("set-vieja")],
+    });
+    const stones = tombstonesForRound(true, local, readTombstones(), [], {});
+    assert.equal(stones.some((row) => row.entity === "sets"), false);
+    assert.deepEqual(stones, [{ entity: "workouts", id: "w-borrado" }]);
+
+    const prepared = prepareSyncSnapshot(local, remote, readTombstones(), { preferLocal: true });
+    assert.equal(prepared.tombstones.some((row) => row.entity === "sets"), false);
+    assert.deepEqual(prepared.tombstones, [{ entity: "workouts", id: "w-borrado" }]);
+    assert.equal(prepared.snapshot.workouts.some((row) => row.id === "w-borrado"), false);
+    assert.equal(prepared.snapshot.workouts.find((row) => row.id === "w-queda").title, "Sigue");
+    assert.equal(prepared.snapshot.sets.some((row) => row.id === "set-vieja"), true);
+    assert.equal(prepared.keepsHistory, true);
+
+    removeTombstones(prepared.tombstones);
+    assert.deepEqual(readTombstones(), [{ entity: "sets", id: "set-vieja" }]);
   });
 
   test("server ack must include every workout that was sent", () => {
@@ -178,7 +219,7 @@ describe("first upload", () => {
       ],
       {},
     );
-    assert.deepEqual(stones, [{ entity: "sets", id: "set-user" }]);
+    assert.deepEqual(stones, []);
     const prepared = prepareSyncSnapshot(
       local,
       gym(),

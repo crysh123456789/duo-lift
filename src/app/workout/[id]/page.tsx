@@ -14,7 +14,7 @@ import { personName } from "@/lib/people";
 import { useOwnGym } from "@/lib/auth/use-own-gym";
 import { useGymStore } from "@/lib/store";
 import { LoggedSetEditor } from "@/components/logged-set-editor";
-import { SET_COPY, type SetEditPatch } from "@/lib/sets/edit";
+import { SET_COPY, SET_DELETE_ENABLED, type SetEditPatch } from "@/lib/sets/edit";
 import type { BlockNode } from "@/lib/workout-tree";
 import { formatSet, workoutTree, workoutVolume } from "@/lib/workout-tree";
 
@@ -126,7 +126,10 @@ export default function WorkoutDetailPage() {
             <OwnedBlockSets
               block={block}
               onChange={(setId, patch) => updateSet(setId, patch)}
-              onDelete={(setId) => removeSet(setId)}
+              onDelete={(setId) => {
+                if (!SET_DELETE_ENABLED) return;
+                removeSet(setId);
+              }}
             />
           ) : block.kind === "circuit" ? (
             <>
