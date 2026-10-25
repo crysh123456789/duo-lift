@@ -5,6 +5,7 @@ import { LoggedSetEditor } from "@/components/logged-set-editor";
 import { SET_DELETE_ENABLED } from "@/lib/sets/edit";
 import { useGymStore } from "@/lib/store";
 
+const LOCAL_CONFIRM_BODY = "Se quita de este entrenamiento. No vuelve a aparecer.";
 const MOCK_WORKOUT = "mock-session";
 const MOCK_BLOCK = "mock-block";
 const MOCK_STATION = "mock-station";
@@ -132,6 +133,7 @@ export function SeriesMock() {
             label={`Serie ${index + 1}`}
             unilateral={false}
             initialMode={initialMode(index)}
+            confirmBody={LOCAL_CONFIRM_BODY}
             onChange={(patch) => updateSet(set.id, patch)}
             onDelete={() => {
               if (!SET_DELETE_ENABLED) return false;

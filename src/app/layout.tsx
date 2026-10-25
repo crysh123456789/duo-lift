@@ -1,14 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, IBM_Plex_Mono } from "next/font/google";
+import { IBM_Plex_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { AppShell } from "@/components/app-shell";
 import { AuthGate } from "@/components/auth-gate";
 import { HydrateGate } from "@/components/hydrate-gate";
 import { SyncProvider } from "@/components/sync-provider";
 import "./globals.css";
 
-const archivo = Archivo({
+// Self-hosted latin subset. next/font/google emits unicode-range U+0000-00FF,
+// and the CSS pipeline turns that into U+??, so í falls through to a clipped fallback.
+const archivo = localFont({
+  src: "../fonts/archivo-latin.woff2",
   variable: "--font-archivo",
-  subsets: ["latin"],
+  weight: "100 900",
+  display: "swap",
+  adjustFontFallback: false,
 });
 
 const plex = IBM_Plex_Mono({

@@ -24,9 +24,12 @@ export function queueSetDeletion(setId: string) {
 }
 
 export type SetDeleteSettlement = {
-  /** Accepted, obsolete, or already gone. Leave the phone queue. */
+  /** Accepted, obsolete, already gone, or a false that must not be retried. Leave the phone queue. */
   drain: Tombstone[];
-  /** soft_delete_own_set returned false and the series is still live on the server. */
+  /**
+   * soft_delete_own_set returned false and the series is still live on the server.
+   * These rows are restored from the reply and also listed in `drain`, so the queue does not retry them.
+   */
   keepQueued: Tombstone[];
   /** The server rejected these series as someone else's. They stay on the phone. */
   keepSetIds: string[];
@@ -37,8 +40,9 @@ export type SetDeleteSettlement = {
 /**
  * A set tombstone the server accepted is drained.
  * `obsolete` is the same: the row is already gone, so it is not revived and nothing else is deleted.
- * `rejected` keeps that series. `false` (the row is still live and no tombstone was recorded)
- * stays in the queue and surfaces as an error, without dropping other series.
+ * `rejected` keeps that series.
+ * `false` while the series is still in the returned snapshot is an error: put it back from that
+ * snapshot and drain the tombstone so the next round does not send it again.
  * `false` when the caller's snapshot no longer has the row is resolved: drain it, delete nothing else.
  */
 export function settleSetDeletes(input: {
@@ -85,6 +89,7 @@ export function settleSetDeletes(input: {
     }
     if (input.serverSetIds.has(row.id)) {
       keepQueued.push(row);
+      drain.push(row);
       error = true;
       continue;
     }
@@ -94,7 +99,7 @@ export function settleSetDeletes(input: {
   return { drain, keepQueued, keepSetIds, error };
 }
 
-/** Puts a rejected series back when the server still has it. Never removes a row. */
+/** Puts a rejected or still-live series back from the server snapshot. Never removes a row. */
 export function restoreRejectedSets(
   local: GymData,
   returned: GymData | null,

@@ -255,7 +255,10 @@ export function startGymSync() {
           items: outcomes,
           serverSetIds: new Set(returned.sets.map((row) => row.id)),
         });
-        const restored = restoreRejectedSets(ownSnapshot(userId), returned, settlement.keepSetIds);
+        const restored = restoreRejectedSets(ownSnapshot(userId), returned, [
+          ...settlement.keepSetIds,
+          ...settlement.keepQueued.map((row) => row.id),
+        ]);
         if (!snapshotsMatch(restored, ownSnapshot(userId), ignoreReminders)) {
           applyOwn(restored, userId);
         }

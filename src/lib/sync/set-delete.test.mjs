@@ -3,6 +3,19 @@ import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { applySyncItemResults } from "./items.ts";
 import { restoreRejectedSets, settleSetDeletes } from "./set-delete.ts";
+import { addTombstones, readTombstones, removeTombstones, setSyncStorageUser } from "./storage.ts";
+
+const memory = new Map();
+globalThis.localStorage = {
+  getItem: (key) => (memory.has(key) ? memory.get(key) : null),
+  setItem: (key, value) => {
+    memory.set(key, String(value));
+  },
+  removeItem: (key) => {
+    memory.delete(key);
+  },
+  clear: () => memory.clear(),
+};
 
 const engine = readFileSync(new URL("./engine.ts", import.meta.url), "utf8");
 
@@ -41,7 +54,7 @@ function gym(ids) {
 }
 
 describe("set delete replies", () => {
-  test("false keeps the tombstone and does not name any other series", () => {
+  test("false names the live series, drains that tombstone, and does not touch any other series", () => {
     const settlement = settleSetDeletes({
       sent: [
         { entity: "sets", id: "set-false" },
@@ -53,8 +66,8 @@ describe("set delete replies", () => {
     });
     assert.deepEqual(settlement.keepQueued, [{ entity: "sets", id: "set-false" }]);
     assert.equal(
-      settlement.drain.some((row) => row.id === "set-false"),
-      false,
+      settlement.drain.some((row) => row.entity === "sets" && row.id === "set-false"),
+      true,
     );
     assert.deepEqual(
       settlement.drain.find((row) => row.entity === "workouts"),
@@ -63,6 +76,42 @@ describe("set delete replies", () => {
     assert.deepEqual(settlement.keepSetIds, []);
     assert.equal(settlement.error, true);
     assert.equal(settlement.drain.some((row) => row.id === "set-live"), false);
+  });
+
+  test("false puts the live series back, drops that tombstone, and reports an error", () => {
+    memory.clear();
+    setSyncStorageUser("11111111-1111-4111-8111-111111111111");
+    addTombstones([
+      { entity: "sets", id: "set-false" },
+      { entity: "sets", id: "set-other-queued" },
+    ]);
+    const settlement = settleSetDeletes({
+      sent: [{ entity: "sets", id: "set-false" }],
+      serverTombstones: [],
+      items: [],
+      serverSetIds: new Set(["set-false", "set-sibling"]),
+    });
+    assert.equal(settlement.error, true);
+    assert.deepEqual(settlement.keepQueued, [{ entity: "sets", id: "set-false" }]);
+    const returned = gym(["set-false", "set-sibling"]);
+    returned.sets[0] = { ...returned.sets[0], weightKg: 55, reps: 5 };
+    const restored = restoreRejectedSets(gym([]), returned, [
+      ...settlement.keepSetIds,
+      ...settlement.keepQueued.map((row) => row.id),
+    ]);
+    assert.deepEqual(
+      restored.sets.map((row) => row.id),
+      ["set-false"],
+    );
+    assert.equal(restored.sets[0].weightKg, 55);
+    assert.equal(restored.sets[0].reps, 5);
+    assert.equal(restored.sets.some((row) => row.id === "set-sibling"), false);
+    removeTombstones(settlement.drain);
+    assert.equal(
+      readTombstones().some((row) => row.id === "set-false"),
+      false,
+    );
+    assert.deepEqual(readTombstones(), [{ entity: "sets", id: "set-other-queued" }]);
   });
 
   test("false with the series already gone is resolved and leaves the live one", () => {
@@ -135,7 +184,7 @@ describe("set delete replies", () => {
     assert.equal(settlement.drain.some((row) => row.id === "set-viva"), false);
 
     assert.match(engine, /settleSetDeletes\(/);
-    assert.match(engine, /restoreRejectedSets\(/);
+    assert.match(engine, /restoreRejectedSets\([\s\S]*settlement\.keepSetIds[\s\S]*settlement\.keepQueued/);
     assert.match(engine, /removeTombstones\(settlement\.drain\)/);
     assert.match(engine, /set delete not applied/);
     assert.equal(/removeTombstones\(prepared\.tombstones\)/.test(engine), false);

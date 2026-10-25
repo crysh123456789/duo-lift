@@ -62,9 +62,11 @@ export function DeleteSetError({ onCancel, onRetry }: { onCancel: () => void; on
 export function DeleteSetConfirm({
   onCancel,
   onConfirm,
+  body = SET_COPY.confirmBody,
 }: {
   onCancel: () => void;
   onConfirm: () => void;
+  body?: string;
 }) {
   const titleId = useId();
   const bodyId = useId();
@@ -81,13 +83,18 @@ export function DeleteSetConfirm({
         {SET_COPY.confirmTitle}
       </p>
       <p id={bodyId} className="text-sm text-muted">
-        {SET_COPY.confirmBody}
+        {body}
       </p>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button className={`${TOUCH} w-full sm:flex-1`} onClick={onCancel}>
           {SET_COPY.cancel}
         </Button>
-        <Button variant="danger" className={`${TOUCH} w-full border border-danger/40 sm:flex-1`} onClick={onConfirm}>
+        <Button
+          variant="danger"
+          className={`${TOUCH} w-full overflow-visible border border-danger/40 py-2 leading-normal sm:flex-1`}
+          style={{ height: "auto", minHeight: "2.75rem", fontWeight: 650 }}
+          onClick={onConfirm}
+        >
           {SET_COPY.confirmDelete}
         </Button>
       </div>
@@ -135,6 +142,7 @@ export function LoggedSetEditor({
   onChange,
   onDelete,
   initialMode,
+  confirmBody,
 }: {
   set: SetLog;
   label: string;
@@ -142,6 +150,7 @@ export function LoggedSetEditor({
   onChange: (patch: SetEditPatch) => void;
   onDelete: () => void | boolean | Promise<void | boolean>;
   initialMode?: DeleteMode;
+  confirmBody?: string;
 }) {
   const [mode, setMode] = useState<DeleteMode>(() => startingMode(initialMode));
   const [draft, setDraft] = useState<SetEditPatch>(() => editableSetSnapshot(set));
@@ -249,7 +258,11 @@ export function LoggedSetEditor({
 
       {mode === "confirm" && SET_DELETE_ENABLED ? (
         <div className="mt-3">
-          <DeleteSetConfirm onCancel={() => setMode("view")} onConfirm={() => void confirmDelete()} />
+          <DeleteSetConfirm
+            body={confirmBody}
+            onCancel={() => setMode("view")}
+            onConfirm={() => void confirmDelete()}
+          />
         </div>
       ) : null}
 

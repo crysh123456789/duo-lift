@@ -149,7 +149,9 @@ describe("series edits", () => {
 
   test("the editor copy is Colombian Spanish and the controls are at least 44px", () => {
     assert.equal(SET_COPY.confirmTitle, "¿Eliminar esta serie?");
+    assert.equal(SET_COPY.confirmDelete, "Sí, eliminar");
     assert.match(SET_COPY.confirmBody, /teléfono/);
+    assert.match(SET_COPY.confirmBody, /se sincroniza/);
     assert.match(SET_COPY.confirmBody, /No vuelve a aparecer/);
     assert.equal(/vosotros|ordenador|vale/.test(Object.values(SET_COPY).join(" ")), false);
     const ui = readFileSync(new URL("../../components/logged-set-editor.tsx", import.meta.url), "utf8");
@@ -307,6 +309,18 @@ describe("series edits", () => {
       const text = readFileSync(new URL(rel, import.meta.url), "utf8");
       assert.match(text, /SET_DELETE_ENABLED/, rel);
     }
+  });
+
+  test("la sesión de prueba no dice que se sincroniza", () => {
+    const mock = readFileSync(new URL("../../app/dev/series/series-mock.tsx", import.meta.url), "utf8");
+    assert.match(mock, /Se quita de este entrenamiento\. No vuelve a aparecer\./);
+    assert.equal(mock.includes("se sincroniza"), false);
+    assert.match(mock, /confirmBody=/);
+    const editor = readFileSync(new URL("../../components/logged-set-editor.tsx", import.meta.url), "utf8");
+    assert.match(editor, /body = SET_COPY\.confirmBody/);
+    assert.match(editor, /confirmBody/);
+    assert.match(SET_COPY.confirmBody, /teléfono/);
+    assert.match(SET_COPY.confirmBody, /se sincroniza/);
   });
 
   test("the local mock never opens Supabase", () => {
