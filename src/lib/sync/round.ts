@@ -1,9 +1,19 @@
 import { collapseFoodDays } from "@/lib/nutrition";
 import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
+import { SET_DELETE_ENABLED } from "@/lib/sets/edit";
 import type { GymData } from "@/lib/types";
 import { mergeRemoteSnapshot, stripMealItems } from "./merge";
 import { canonicalize } from "./snapshot";
 import type { Tombstone } from "./types";
+
+/**
+ * Set deletes stay in the phone queue until 0015/0016 and the tolerant sync.
+ * Sending one makes sync_apply call soft_delete_own_set and the round gets 42501.
+ */
+function tombstonesSafeToSend(rows: Tombstone[]): Tombstone[] {
+  if (SET_DELETE_ENABLED) return rows;
+  return rows.filter((row) => row.entity !== "sets");
+}
 
 const HISTORY = ["workouts", "blocks", "stations", "sets", "foodDays"] as const;
 
@@ -35,7 +45,7 @@ export function tombstonesForRound(
   ack: Record<string, string>,
 ): Tombstone[] {
   const combined = dedupeTombstones(migrated ? [...remoteStones, ...localStones] : localStones);
-  return combined.filter((row) => forwardsTombstone(localData, row, ack));
+  return tombstonesSafeToSend(combined.filter((row) => forwardsTombstone(localData, row, ack)));
 }
 
 /** True when every local history row is still present, or this phone deleted it. */
@@ -73,6 +83,7 @@ export function serverKeptWorkouts(sent: GymData, returned: GymData | null, tomb
 
 /** One row per station/round/set slot so `set_logs` unique index does not reject the upload. */
 export function collapseDuplicateSets(data: GymData): { data: GymData; tombstones: Tombstone[] } {
+  if (!SET_DELETE_ENABLED) return { data, tombstones: [] };
   const bySlot = new Map<string, GymData["sets"]>();
   for (const row of data.sets) {
     const key = `${row.stationId}\n${row.roundIndex}\n${row.setIndex}`;
@@ -116,15 +127,17 @@ export function prepareSyncSnapshot(
   options?: PrepareOptions,
 ): { snapshot: GymData; tombstones: Tombstone[]; keepsHistory: boolean } {
   const ack = options?.ack ?? {};
-  const safeTombstones = tombstones.filter((row) => forwardsTombstone(local, row, ack));
+  const safeTombstones = tombstonesSafeToSend(tombstones.filter((row) => forwardsTombstone(local, row, ack)));
   const merged = mergeRemoteSnapshot(local, remote, safeTombstones, options);
   const collapsedSets = collapseDuplicateSets(merged);
   const collapsed = collapseDuplicateFoodDays(collapsedSets.data);
-  const nextTombstones = dedupeTombstones([
-    ...safeTombstones,
-    ...collapsedSets.tombstones,
-    ...collapsed.tombstones,
-  ]).filter((row) => !isDemoTombstone(row, local));
+  const nextTombstones = tombstonesSafeToSend(
+    dedupeTombstones([
+      ...safeTombstones,
+      ...collapsedSets.tombstones,
+      ...collapsed.tombstones,
+    ]).filter((row) => !isDemoTombstone(row, local)),
+  );
   const snapshot = canonicalize(
     omitSeedHistory({
       ...collapsed.data,

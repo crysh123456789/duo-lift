@@ -17,6 +17,7 @@ export type SetEditPatch = Partial<Pick<SetLog, EditableSetField>>;
 /**
  * Apagado. Se activa cuando se apliquen 0015/0016 y el sync tolerante.
  * Mientras tanto, la interfaz no muestra Eliminar y no crea tombstones de series.
+ * Los que ya están en la cola tampoco se envían: se quedan ahí, sin borrarlos.
  */
 export const SET_DELETE_ENABLED: boolean = false;
 
