@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { createSeed, isLegacySeedId } from "../seed.ts";
 import { SET_DELETE_ENABLED } from "../sets/edit.ts";
+import { toSyncPayload } from "./payload.ts";
 import { addTombstones, readTombstones, removeTombstones, setSyncStorageUser } from "./storage.ts";
 import {
   historyPreserved,
@@ -132,6 +133,43 @@ describe("first upload", () => {
     assert.deepEqual(
       phone.sets.map((row) => row.id),
       ["set-new", "set-old"],
+    );
+  });
+
+  test("la copia descartada no se reenvía en la ronda siguiente", () => {
+    assert.equal(SET_DELETE_ENABLED, false);
+    const local = gym({
+      sets: [setRow("set-old", "2026-10-01T18:00:00.000Z"), setRow("set-new", "2026-10-02T18:00:00.000Z")],
+    });
+    const first = prepareSyncSnapshot(local, null, [], { preferLocal: true });
+    const phone = retainUnsentDuplicateSets(local, first.snapshot);
+    assert.deepEqual(
+      phone.sets.map((row) => row.id),
+      ["set-new", "set-old"],
+    );
+
+    const second = prepareSyncSnapshot(phone, first.snapshot, [], { preferLocal: false });
+    assert.deepEqual(
+      second.snapshot.sets.map((row) => row.id),
+      ["set-new"],
+    );
+    assert.equal(
+      second.tombstones.some((row) => row.id === "set-old"),
+      false,
+    );
+    const payload = toSyncPayload(second.snapshot, second.tombstones);
+    assert.deepEqual(
+      payload.sets.map((row) => row.id),
+      ["set-new"],
+    );
+    assert.equal(
+      payload.tombstones.some((row) => row.id === "set-old"),
+      false,
+    );
+    const stillOnPhone = retainUnsentDuplicateSets(phone, second.snapshot);
+    assert.equal(
+      stillOnPhone.sets.some((row) => row.id === "set-old"),
+      true,
     );
   });
 
