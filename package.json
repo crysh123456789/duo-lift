@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import ./test/register.mjs --test src/lib/nutrition.test.mjs src/lib/session-date.test.mjs src/lib/sync/merge.test.mjs src/lib/sync/round.test.mjs src/lib/sync/status.test.mjs src/lib/sync/storage.test.mjs src/lib/auth/scope.test.mjs src/lib/auth/errors.test.mjs src/lib/auth/paths.test.mjs src/lib/auth/recovery.test.mjs src/lib/auth/migration.test.mjs src/lib/auth/soft-delete.test.mjs src/lib/auth/claim-binding.test.mjs src/lib/auth/profile-sync.test.mjs src/lib/auth/no-claim-ui.test.mjs src/lib/sync/rejected.test.mjs src/lib/seed.test.mjs src/lib/metrics.test.mjs"
+    "test": "node --import ./test/register.mjs --test src/lib/nutrition.test.mjs src/lib/session-date.test.mjs src/lib/sync/merge.test.mjs src/lib/sync/round.test.mjs src/lib/sync/status.test.mjs src/lib/sync/storage.test.mjs src/lib/auth/scope.test.mjs src/lib/auth/errors.test.mjs src/lib/auth/paths.test.mjs src/lib/auth/recovery.test.mjs src/lib/auth/migration.test.mjs src/lib/auth/soft-delete.test.mjs src/lib/auth/claim-binding.test.mjs src/lib/auth/profile-sync.test.mjs src/lib/auth/no-claim-ui.test.mjs src/lib/auth/set-rls.test.mjs src/lib/sync/rejected.test.mjs src/lib/seed.test.mjs src/lib/metrics.test.mjs src/lib/sets/edit.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
@@ -22,6 +22,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

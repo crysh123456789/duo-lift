@@ -13,13 +13,61 @@ import { es } from "date-fns/locale";
 import { personName } from "@/lib/people";
 import { useOwnGym } from "@/lib/auth/use-own-gym";
 import { useGymStore } from "@/lib/store";
+import { LoggedSetEditor } from "@/components/logged-set-editor";
+import { SET_COPY, type SetEditPatch } from "@/lib/sets/edit";
+import type { BlockNode } from "@/lib/workout-tree";
 import { formatSet, workoutTree, workoutVolume } from "@/lib/workout-tree";
+
+function OwnedBlockSets({
+  block,
+  onChange,
+  onDelete,
+}: {
+  block: BlockNode;
+  onChange: (setId: string, patch: SetEditPatch) => void;
+  onDelete: (setId: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {block.kind === "circuit" ? (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-accent">Circuito</p>
+          <h2 className="text-lg font-medium">{block.name}</h2>
+          <p className="mt-1 text-sm text-muted">
+            {block.stations.map((station) => station.exercise.name).join(" → ")} · {block.targetRounds} rondas
+          </p>
+        </div>
+      ) : null}
+      {block.stations.map((station) => (
+        <div key={station.id} className="space-y-2">
+          <h2 className="text-lg font-medium">{station.exercise.name}</h2>
+          {station.sets.length === 0 ? (
+            <p className="text-sm text-muted">{SET_COPY.empty}</p>
+          ) : (
+            station.sets.map((set, index) => (
+              <LoggedSetEditor
+                key={set.id}
+                set={set}
+                label={block.kind === "circuit" ? `Ronda ${set.roundIndex}` : `Serie ${index + 1}`}
+                unilateral={station.exercise.isUnilateral}
+                onChange={(patch) => onChange(set.id, patch)}
+                onDelete={() => onDelete(set.id)}
+              />
+            ))
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function WorkoutDetailPage() {
   const params = useParams<{ id: string }>();
   const data = useOwnGym();
   const addReaction = useGymStore((s) => s.addReaction);
   const setWorkoutDate = useGymStore((s) => s.setWorkoutDate);
+  const updateSet = useGymStore((s) => s.updateSet);
+  const removeSet = useGymStore((s) => s.removeSet);
   const [comment, setComment] = useState("");
   const tree = workoutTree(data, params.id);
   const [dateNotice, setDateNotice] = useState("");
@@ -73,8 +121,14 @@ export default function WorkoutDetailPage() {
       ) : null}
 
       {tree.blocks.map((block) => (
-        <Panel key={block.id} className="p-4">
-          {block.kind === "circuit" ? (
+        <Panel key={block.id} className="space-y-3 p-4">
+          {isMine ? (
+            <OwnedBlockSets
+              block={block}
+              onChange={(setId, patch) => updateSet(setId, patch)}
+              onDelete={(setId) => removeSet(setId)}
+            />
+          ) : block.kind === "circuit" ? (
             <>
               <p className="text-[11px] uppercase tracking-wider text-accent">Circuito</p>
               <h2 className="mb-3 text-lg font-medium">{block.name}</h2>

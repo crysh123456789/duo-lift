@@ -1,6 +1,9 @@
 "use client";
 
 import { Check, Minus, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { DeleteSetConfirm } from "@/components/logged-set-editor";
+import { SET_COPY } from "@/lib/sets/edit";
 import type { BlockNode } from "@/lib/workout-tree";
 import { formatLoad } from "@/lib/copy";
 import { getWorkingLoad } from "@/lib/loads";
@@ -24,6 +27,7 @@ export function StraightBlock({
   const addSet = useGymStore((s) => s.addSet);
   const removeSet = useGymStore((s) => s.removeSet);
   const removeBlock = useGymStore((s) => s.removeBlock);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   if (!station) return null;
   const unilateral = station.exercise.isUnilateral;
@@ -127,15 +131,25 @@ export function StraightBlock({
             {pr ? (
               <p className="col-span-full text-[11px] text-accent">PR · superaste la carga previa</p>
             ) : null}
-            {station.sets.length > 1 && i === station.sets.length - 1 ? (
+            {confirmId === set.id ? (
+              <div className="col-span-full">
+                <DeleteSetConfirm
+                  onCancel={() => setConfirmId(null)}
+                  onConfirm={() => {
+                    removeSet(set.id);
+                    setConfirmId(null);
+                  }}
+                />
+              </div>
+            ) : (
               <button
                 type="button"
-                onClick={() => removeSet(set.id)}
-                className="col-span-full text-left text-[11px] text-muted hover:text-danger"
+                onClick={() => setConfirmId(set.id)}
+                className="col-span-full inline-flex min-h-11 min-w-11 items-center rounded-xl px-3 text-left text-sm text-danger"
               >
-                Quitar última serie
+                {SET_COPY.deleteSeries}
               </button>
-            ) : null}
+            )}
           </div>
           );
         })}
