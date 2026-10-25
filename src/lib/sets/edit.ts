@@ -14,6 +14,12 @@ export const EDITABLE_SET_FIELDS = [
 export type EditableSetField = (typeof EDITABLE_SET_FIELDS)[number];
 export type SetEditPatch = Partial<Pick<SetLog, EditableSetField>>;
 
+/**
+ * Apagado. Se activa cuando se apliquen 0015/0016 y el sync tolerante.
+ * Mientras tanto, la interfaz no muestra Eliminar y no crea tombstones de series.
+ */
+export const SET_DELETE_ENABLED: boolean = false;
+
 export const SET_COPY = {
   edit: "Editar",
   delete: "Eliminar",

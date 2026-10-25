@@ -36,7 +36,7 @@ import {
   shiftStartedAt,
 } from "./session-date";
 import { DEFAULT_REMINDERS } from "./reminders";
-import { setEditPatch } from "./sets/edit";
+import { SET_DELETE_ENABLED, setEditPatch } from "./sets/edit";
 import { queueSetDeletion } from "./sync/set-delete";
 
 type FinishPayload = {
@@ -521,6 +521,7 @@ export const useGymStore = create<GymStore>()(
         }),
 
       removeSet: (setId) => {
+        if (!SET_DELETE_ENABLED) return;
         if (!duoUnlocked()) return;
         if (!get().sets.some((row) => row.id === setId)) return;
         queueSetDeletion(setId);

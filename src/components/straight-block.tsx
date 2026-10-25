@@ -3,7 +3,7 @@
 import { Check, Minus, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { DeleteSetConfirm } from "@/components/logged-set-editor";
-import { SET_COPY } from "@/lib/sets/edit";
+import { SET_COPY, SET_DELETE_ENABLED } from "@/lib/sets/edit";
 import type { BlockNode } from "@/lib/workout-tree";
 import { formatLoad } from "@/lib/copy";
 import { getWorkingLoad } from "@/lib/loads";
@@ -131,7 +131,7 @@ export function StraightBlock({
             {pr ? (
               <p className="col-span-full text-[11px] text-accent">PR · superaste la carga previa</p>
             ) : null}
-            {confirmId === set.id ? (
+            {SET_DELETE_ENABLED && confirmId === set.id ? (
               <div className="col-span-full">
                 <DeleteSetConfirm
                   onCancel={() => setConfirmId(null)}
@@ -141,7 +141,8 @@ export function StraightBlock({
                   }}
                 />
               </div>
-            ) : (
+            ) : null}
+            {SET_DELETE_ENABLED && confirmId !== set.id ? (
               <button
                 type="button"
                 onClick={() => setConfirmId(set.id)}
@@ -149,7 +150,7 @@ export function StraightBlock({
               >
                 {SET_COPY.deleteSeries}
               </button>
-            )}
+            ) : null}
           </div>
           );
         })}

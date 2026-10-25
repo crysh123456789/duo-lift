@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { createSeed } from "../seed.ts";
-import { SET_COPY, commitSetDraft, editableSetSnapshot, setEditPatch } from "./edit.ts";
+import { SET_COPY, SET_DELETE_ENABLED, commitSetDraft, editableSetSnapshot, setEditPatch } from "./edit.ts";
 import { toSyncPayload } from "../sync/payload.ts";
 import { queueSetDeletion, setDeletionTombstone } from "../sync/set-delete.ts";
 import { readTombstones, setSyncStorageUser } from "../sync/storage.ts";
@@ -48,14 +48,15 @@ describe("series edits", () => {
     );
   });
 
-  test("queues a tombstone for a real series and ignores demo ids", () => {
+  test("con el flag apagado no encola un tombstone y sigue ignorando ids de demo", () => {
     memory.clear();
     setSyncStorageUser("11111111-1111-4111-8111-111111111111");
+    assert.equal(SET_DELETE_ENABLED, false);
     assert.equal(setDeletionTombstone("w-cr-d5-b1-s1-1"), null);
     assert.deepEqual(setDeletionTombstone("set-phone"), { entity: "sets", id: "set-phone" });
     queueSetDeletion("w-cr-d5-b1-s1-1");
     queueSetDeletion("set-phone");
-    assert.deepEqual(readTombstones(), [{ entity: "sets", id: "set-phone" }]);
+    assert.deepEqual(readTombstones(), []);
   });
 
   test("the sync payload carries the edited fields and the delete", () => {
@@ -161,6 +162,104 @@ describe("series edits", () => {
     assert.match(straight, /DeleteSetConfirm/);
     assert.match(straight, /min-h-11/);
     assert.match(circuit, /LoggedSetEditor/);
+  });
+
+  test("Eliminar no se renderiza con el flag apagado", async () => {
+    assert.equal(SET_DELETE_ENABLED, false);
+    memory.clear();
+    setSyncStorageUser("11111111-1111-4111-8111-111111111111");
+
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { LoggedSetEditor } = await import("../../components/logged-set-editor.tsx");
+    const { StraightBlock } = await import("../../components/straight-block.tsx");
+    const { useGymStore } = await import("../store.ts");
+
+    const set = {
+      id: "set-phone",
+      stationId: "st-ui",
+      roundIndex: 1,
+      setIndex: 1,
+      reps: 8,
+      repsRight: null,
+      weightKg: 40,
+      durationSec: null,
+      rpe: 7,
+      isWarmup: false,
+      completed: true,
+      loggedAt: "2026-10-25T18:00:00.000Z",
+    };
+    const list = renderToStaticMarkup(
+      createElement(LoggedSetEditor, {
+        set,
+        label: "Serie 1",
+        unilateral: false,
+        onChange() {},
+        onDelete() {
+          throw new Error("Eliminar no debe correr");
+        },
+      }),
+    );
+    assert.equal(/eliminar/i.test(list), false);
+    assert.match(list, /Editar/);
+    assert.match(list, /data-set-actions="view"/);
+
+    const straight = renderToStaticMarkup(
+      createElement(StraightBlock, {
+        block: {
+          id: "block-ui",
+          workoutId: "workout-ui",
+          position: 1,
+          kind: "straight",
+          name: null,
+          targetRounds: 1,
+          restBetweenRoundsSec: null,
+          restSec: 90,
+          stations: [
+            {
+              id: "st-ui",
+              blockId: "block-ui",
+              exerciseId: "ex-banca",
+              position: 1,
+              notes: null,
+              exercise: {
+                id: "ex-banca",
+                name: "Press banca",
+                muscleGroup: "chest",
+                equipment: "barbell",
+                isUnilateral: false,
+                createdByUserId: null,
+                duoId: null,
+              },
+              sets: [set],
+            },
+          ],
+        },
+      }),
+    );
+    assert.equal(/eliminar/i.test(straight), false);
+    assert.match(straight, /Press banca/);
+
+    const before = useGymStore.getState().sets.length;
+    useGymStore.setState({ sets: [...useGymStore.getState().sets, set] });
+    useGymStore.getState().removeSet(set.id);
+    queueSetDeletion(set.id);
+    assert.equal(useGymStore.getState().sets.some((row) => row.id === set.id), true);
+    assert.equal(useGymStore.getState().sets.length, before + 1);
+    assert.deepEqual(readTombstones(), []);
+
+    for (const rel of [
+      "../../components/logged-set-editor.tsx",
+      "../../components/straight-block.tsx",
+      "../../components/circuit-block.tsx",
+      "../../app/workout/[id]/page.tsx",
+      "../../app/dev/series/series-mock.tsx",
+      "../store.ts",
+      "../sync/set-delete.ts",
+    ]) {
+      const text = readFileSync(new URL(rel, import.meta.url), "utf8");
+      assert.match(text, /SET_DELETE_ENABLED/, rel);
+    }
   });
 
   test("the local mock never opens Supabase", () => {
