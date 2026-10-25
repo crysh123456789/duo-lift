@@ -36,6 +36,8 @@ import {
   shiftStartedAt,
 } from "./session-date";
 import { DEFAULT_REMINDERS } from "./reminders";
+import { setEditPatch } from "./sets/edit";
+import { queueSetDeletion } from "./sync/set-delete";
 
 type FinishPayload = {
   title?: string;
@@ -398,10 +400,12 @@ export const useGymStore = create<GymStore>()(
 
       updateSet: (setId, patch) => {
         if (!duoUnlocked()) return;
+        const editable = setEditPatch(patch);
+        if (Object.keys(editable).length === 0) return;
         set((state) => {
           const current = state.sets.find((s) => s.id === setId);
           if (!current) return {};
-          const next = { ...current, ...patch, loggedAt: new Date().toISOString() };
+          const next = { ...current, ...editable, loggedAt: new Date().toISOString() };
           let workingLoads = state.workingLoads ?? {};
           if (next.weightKg != null && !next.isWarmup) {
             const station = state.stations.find((s) => s.id === current.stationId);
@@ -516,7 +520,12 @@ export const useGymStore = create<GymStore>()(
           return { sets, workingLoads };
         }),
 
-      removeSet: (setId) => set((state) => ({ sets: state.sets.filter((s) => s.id !== setId) })),
+      removeSet: (setId) => {
+        if (!duoUnlocked()) return;
+        if (!get().sets.some((row) => row.id === setId)) return;
+        queueSetDeletion(setId);
+        set((state) => ({ sets: state.sets.filter((row) => row.id !== setId) }));
+      },
 
       addReaction: (workoutId, kind, body) =>
         set((state) => ({

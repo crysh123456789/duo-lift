@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Minus, Plus, Trash2 } from "lucide-react";
+import { LoggedSetEditor } from "@/components/logged-set-editor";
 import type { BlockNode, StationNode } from "@/lib/workout-tree";
 import { formatSet } from "@/lib/workout-tree";
 import { formatLoad } from "@/lib/copy";
@@ -32,6 +33,10 @@ export function CircuitBlock({
   const toggleSetComplete = useGymStore((s) => s.toggleSetComplete);
   const bumpStationWeight = useGymStore((s) => s.bumpStationWeight);
   const removeBlock = useGymStore((s) => s.removeBlock);
+  const removeSet = useGymStore((s) => s.removeSet);
+  const logged = block.stations.flatMap((station) =>
+    station.sets.filter((set) => set.completed).map((set) => ({ station, set })),
+  );
   const current = firstOpenSet(block);
   const workout = data.workouts.find((w) => w.id === block.workoutId);
   const currentLoad =
@@ -47,7 +52,7 @@ export function CircuitBlock({
     : undefined;
 
   return (
-    <section className="rounded-2xl border border-accent/30 bg-surface p-4">
+    <section className="min-w-0 rounded-2xl border border-accent/30 bg-surface p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] uppercase tracking-wider text-accent">Circuito</p>
@@ -179,6 +184,26 @@ export function CircuitBlock({
           </tbody>
         </table>
       </div>
+
+      {logged.length > 0 ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-[11px] uppercase tracking-wider text-muted">Series registradas</p>
+          {logged.map(({ station, set }) => (
+            <div key={set.id} className="space-y-2">
+              <p className="text-sm">
+                {station.exercise.name} · ronda {set.roundIndex}
+              </p>
+              <LoggedSetEditor
+                set={set}
+                label={`Ronda ${set.roundIndex}`}
+                unilateral={station.exercise.isUnilateral}
+                onChange={(patch) => updateSet(set.id, patch)}
+                onDelete={() => removeSet(set.id)}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

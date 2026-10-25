@@ -28,10 +28,17 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const authPage = isAuthScreen(pathname);
+  const localSeriesMock = process.env.NODE_ENV !== "production" && pathname === "/dev/series";
   const phase = useSyncExternalStore(subscribeAuthPhase, getAuthPhase, () => "boot" as const);
   const error = useSyncExternalStore(subscribeAuthPhase, getAuthError, () => "");
 
   useEffect(() => {
+    if (localSeriesMock) {
+      setSyncUserId(null);
+      setDuoUnlocked(true);
+      setAuthPhase("in");
+      return;
+    }
     if (authPage) return;
     const supabase = createBrowserSupabaseClient();
     if (!supabase) {
@@ -91,16 +98,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
       alive = false;
       sub.subscription.unsubscribe();
     };
-  }, [authPage]);
+  }, [authPage, localSeriesMock]);
 
   useEffect(() => {
-    if (authPage || phase === "boot" || phase === "error") return;
+    if (localSeriesMock || authPage || phase === "boot" || phase === "error") return;
     if (phase === "anon") {
       router.replace("/login");
     }
-  }, [authPage, phase, router]);
+  }, [localSeriesMock, authPage, phase, router]);
 
   if (authPage) return children;
+
+  if (localSeriesMock) {
+    if (phase !== "in") return <Splash />;
+    return children;
+  }
 
   if (phase === "error") {
     return (

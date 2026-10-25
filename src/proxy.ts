@@ -14,6 +14,11 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (pathname.startsWith("/_next") || PUBLIC_FILE.test(pathname)) return NextResponse.next();
 
+  // Local series mock. Returns before any Supabase client, even if env is set.
+  if (process.env.NODE_ENV !== "production" && pathname === "/dev/series") {
+    return NextResponse.next();
+  }
+
   const url = supabaseUrl();
   const key = supabasePublishableKey();
   const authPage = isAuthScreen(pathname);

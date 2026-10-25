@@ -19,7 +19,7 @@ import {
  * 0002_duo_local_sync.sql, 0008_soft_delete.sql, 0009_nutrition_targets.sql,
  * 0010_food_day_merge.sql, 0011_food_day_history_rls.sql,
  * 0012_legacy_claim_binding.sql, 0013_drop_legacy_claim.sql,
- * and 0014_profile_weight_height.sql.
+ * 0014_profile_weight_height.sql, and 0015_set_logs_owner_rls.sql.
  * Identifiers are text because the Zustand store uses slugs (`user-cristian`,
  * `ex-banca`) and uuid strings from `nid()`, not auth.users ids.
  */
@@ -153,12 +153,16 @@ export const setLogs = pgTable(
     isWarmup: boolean("is_warmup").notNull().default(false),
     completed: boolean("completed").notNull().default(false),
     loggedAt: timestamp("logged_at", { withTimezone: true }).notNull().defaultNow(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("set_logs_station_round_set_live_uidx")
       .on(t.stationId, t.roundIndex, t.setIndex)
       .where(sql`${t.deletedAt} is null`),
+    index("set_logs_user_idx").on(t.userId),
   ],
 );
 

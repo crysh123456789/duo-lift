@@ -125,6 +125,30 @@ describe("first upload", () => {
     assert.equal(prepared.keepsHistory, true);
   });
 
+  test("an edited series wins, and a deleted one does not come back from the server", () => {
+    const remoteSet = setRow("set-phone", "2026-10-01T18:00:00.000Z");
+    const edited = { ...remoteSet, weightKg: 42.5, reps: 6, rpe: 8, loggedAt: "2026-10-25T15:00:00.000Z" };
+    const kept = prepareSyncSnapshot(gym({ sets: [edited] }), gym({ sets: [remoteSet] }), [], {
+      preferLocal: false,
+    });
+    assert.equal(kept.snapshot.sets[0].weightKg, 42.5);
+    assert.equal(kept.snapshot.sets[0].reps, 6);
+    assert.equal(kept.snapshot.sets[0].rpe, 8);
+
+    const withoutTombstone = prepareSyncSnapshot(gym({ sets: [] }), gym({ sets: [remoteSet] }), []);
+    assert.equal(withoutTombstone.snapshot.sets.some((row) => row.id === "set-phone"), true);
+
+    const removed = prepareSyncSnapshot(gym({ sets: [] }), gym({ sets: [remoteSet] }), [
+      { entity: "sets", id: "set-phone" },
+    ]);
+    assert.equal(removed.snapshot.sets.some((row) => row.id === "set-phone"), false);
+    assert.equal(
+      removed.tombstones.some((row) => row.entity === "sets" && row.id === "set-phone"),
+      true,
+    );
+    assert.equal(removed.keepsHistory, true);
+  });
+
   test("server ack must include every workout that was sent", () => {
     const sent = gym({ workouts: [workout("w-phone"), workout("w-other")] });
     assert.equal(serverKeptWorkouts(sent, gym({ workouts: [workout("w-phone")] }), []), false);
