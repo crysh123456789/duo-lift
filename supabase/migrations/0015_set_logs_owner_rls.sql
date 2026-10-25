@@ -82,6 +82,7 @@ create trigger set_logs_lock_owner
   execute function private.set_logs_lock_owner();
 
 alter table public.set_logs enable row level security;
+alter table public.set_logs force row level security;
 
 drop policy if exists sets_select_own on public.set_logs;
 drop policy if exists sets_insert_own on public.set_logs;

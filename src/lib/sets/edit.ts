@@ -24,7 +24,7 @@ export const SET_COPY = {
   confirmTitle: "¿Eliminar esta serie?",
   confirmBody:
     "Se quita de este entrenamiento. El cambio queda en el teléfono y se sincroniza. No vuelve a aparecer.",
-  savedHint: "Se guarda en el teléfono al cambiar.",
+  savedHint: "Listo lo guarda en el teléfono. Cancelar lo deja como estaba.",
   weight: "Peso (kg)",
   reps: "Reps",
   repsLeft: "Reps izquierda",
@@ -37,6 +37,28 @@ export const SET_COPY = {
   loggedOff: "Registrada · no",
   empty: "Sin series.",
 } as const;
+
+/** Values the editor can change, copied so a draft does not share the row. */
+export function editableSetSnapshot(set: SetEditPatch): SetEditPatch {
+  return {
+    reps: set.reps ?? null,
+    repsRight: set.repsRight ?? null,
+    weightKg: set.weightKg ?? null,
+    durationSec: set.durationSec ?? null,
+    rpe: set.rpe ?? null,
+    isWarmup: set.isWarmup ?? false,
+    completed: set.completed ?? false,
+  };
+}
+
+/**
+ * Listo writes this patch. Cancelar never calls it: an unchanged draft
+ * returns null so the row and loggedAt stay put.
+ */
+export function commitSetDraft(original: SetEditPatch, draft: SetEditPatch): SetEditPatch | null {
+  const changed = EDITABLE_SET_FIELDS.some((key) => draft[key] !== original[key]);
+  return changed ? editableSetSnapshot(draft) : null;
+}
 
 export function setEditPatch(patch: Partial<SetLog>): SetEditPatch {
   const next: SetEditPatch = {};

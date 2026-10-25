@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { createSeed } from "../seed.ts";
-import { SET_COPY, setEditPatch } from "./edit.ts";
+import { SET_COPY, commitSetDraft, editableSetSnapshot, setEditPatch } from "./edit.ts";
 import { toSyncPayload } from "../sync/payload.ts";
 import { queueSetDeletion, setDeletionTombstone } from "../sync/set-delete.ts";
 import { readTombstones, setSyncStorageUser } from "../sync/storage.ts";
@@ -94,6 +94,55 @@ describe("series edits", () => {
       },
     ]);
     assert.deepEqual(payload.tombstones, [{ entity: "sets", id: "set-gone" }]);
+  });
+
+  test("cancel discards the draft and listo writes only a real change", () => {
+    const original = editableSetSnapshot({
+      reps: 8,
+      repsRight: null,
+      weightKg: 40,
+      durationSec: null,
+      rpe: 7,
+      isWarmup: false,
+      completed: true,
+    });
+    assert.equal(commitSetDraft(original, { ...original }), null);
+    assert.deepEqual(commitSetDraft(original, { ...original, weightKg: 55.5 }), {
+      ...original,
+      weightKg: 55.5,
+    });
+    const ui = readFileSync(new URL("../../components/logged-set-editor.tsx", import.meta.url), "utf8");
+    const editStart = ui.indexOf('{mode === "edit"');
+    const confirmStart = ui.indexOf('{mode === "confirm"');
+    const editBlock = ui.slice(editStart, confirmStart);
+    assert.match(ui, /function saveEdit\(\)/);
+    assert.match(ui, /const patch = commitSetDraft\(editableSetSnapshot\(set\), draft\)/);
+    assert.match(ui, /if \(patch\) onChange\(patch\)/);
+    assert.match(ui, /function cancelEdit\(\)/);
+    assert.match(editBlock, /onClick=\{saveEdit\}/);
+    assert.match(editBlock, /onClick=\{cancelEdit\}/);
+    assert.equal(/onChange\(/.test(editBlock), false);
+  });
+
+  test("edit mode hides Editar and Eliminar and puts Cancelar next to Listo", () => {
+    const ui = readFileSync(new URL("../../components/logged-set-editor.tsx", import.meta.url), "utf8");
+    const viewStart = ui.indexOf('{mode === "view"');
+    const editStart = ui.indexOf('{mode === "edit"');
+    const confirmStart = ui.indexOf('{mode === "confirm"');
+    const viewBlock = ui.slice(viewStart, editStart);
+    const editBlock = ui.slice(editStart, confirmStart);
+    assert.match(viewBlock, /data-set-actions="view"/);
+    assert.match(viewBlock, /SET_COPY\.edit/);
+    assert.match(viewBlock, /SET_COPY\.delete/);
+    assert.match(editBlock, /data-set-actions="edit"/);
+    assert.equal(editBlock.includes("SET_COPY.edit"), false);
+    assert.equal(editBlock.includes("SET_COPY.delete"), false);
+    assert.equal(editBlock.includes("data-set-actions=\"view\""), false);
+    assert.match(editBlock, /SET_COPY\.cancel/);
+    assert.match(editBlock, /SET_COPY\.done/);
+    assert.match(editBlock, /flex gap-2/);
+    const shell = readFileSync(new URL("../../components/app-shell.tsx", import.meta.url), "utf8");
+    assert.match(shell, /pb-32/);
   });
 
   test("the editor copy is Colombian Spanish and the controls are at least 44px", () => {
