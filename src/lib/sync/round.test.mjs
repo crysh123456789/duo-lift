@@ -7,6 +7,7 @@ import {
   historyPreserved,
   missingWorkoutIds,
   prepareSyncSnapshot,
+  retainUnsentDuplicateSets,
   serverKeptWorkouts,
   tombstonesForRound,
 } from "./round.ts";
@@ -122,10 +123,16 @@ describe("first upload", () => {
     const prepared = prepareSyncSnapshot(local, null, [], { preferLocal: true });
     assert.deepEqual(
       prepared.snapshot.sets.map((row) => row.id),
+      ["set-new"],
+    );
+    assert.deepEqual(prepared.tombstones, []);
+    assert.equal(prepared.keepsHistory, true);
+    assert.equal(local.sets.length, 2);
+    const phone = retainUnsentDuplicateSets(local, prepared.snapshot);
+    assert.deepEqual(
+      phone.sets.map((row) => row.id),
       ["set-new", "set-old"],
     );
-    assert.equal(prepared.tombstones.some((row) => row.entity === "sets"), false);
-    assert.equal(prepared.keepsHistory, true);
   });
 
   test("an edited series wins", () => {

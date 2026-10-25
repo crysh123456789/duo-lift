@@ -48,6 +48,10 @@ export function tombstonesForRound(
   return tombstonesSafeToSend(combined.filter((row) => forwardsTombstone(localData, row, ack)));
 }
 
+function setSlot(row: { stationId: string; roundIndex: number; setIndex: number }) {
+  return `${row.stationId}\n${row.roundIndex}\n${row.setIndex}`;
+}
+
 /** True when every local history row is still present, or this phone deleted it. */
 export function historyPreserved(before: GymData, after: GymData, tombstones: Tombstone[]): boolean {
   for (const entity of HISTORY) {
@@ -62,10 +66,29 @@ export function historyPreserved(before: GymData, after: GymData, tombstones: To
         );
         if (absorbed) continue;
       }
+      if (entity === "sets") {
+        const set = row as GymData["sets"][number];
+        const slot = setSlot(set);
+        const kept = (after.sets ?? []).some((other) => other.id !== set.id && setSlot(other) === slot);
+        if (kept) continue;
+      }
       return false;
     }
   }
   return true;
+}
+
+/**
+ * The upload keeps one live row per slot. The older copy stays on the phone
+ * while set deletes are off, so applying the snapshot does not drop it.
+ */
+export function retainUnsentDuplicateSets(local: GymData, snapshot: GymData): GymData {
+  if (SET_DELETE_ENABLED) return snapshot;
+  const keptSlots = new Set(snapshot.sets.map(setSlot));
+  const sent = new Set(snapshot.sets.map((row) => row.id));
+  const extras = local.sets.filter((row) => !sent.has(row.id) && keptSlots.has(setSlot(row)));
+  if (extras.length === 0) return snapshot;
+  return canonicalize({ ...snapshot, sets: [...snapshot.sets, ...extras] });
 }
 
 export function missingWorkoutIds(sent: GymData, returned: GymData | null, tombstones: Tombstone[]): string[] {
@@ -83,7 +106,6 @@ export function serverKeptWorkouts(sent: GymData, returned: GymData | null, tomb
 
 /** One row per station/round/set slot so `set_logs` unique index does not reject the upload. */
 export function collapseDuplicateSets(data: GymData): { data: GymData; tombstones: Tombstone[] } {
-  if (!SET_DELETE_ENABLED) return { data, tombstones: [] };
   const bySlot = new Map<string, GymData["sets"]>();
   for (const row of data.sets) {
     const key = `${row.stationId}\n${row.roundIndex}\n${row.setIndex}`;
@@ -100,6 +122,7 @@ export function collapseDuplicateSets(data: GymData): { data: GymData; tombstone
     });
     const keep = ranked[0];
     if (keep) sets.push(keep);
+    if (!SET_DELETE_ENABLED) continue;
     for (const extra of ranked.slice(1)) tombstones.push({ entity: "sets", id: extra.id });
   }
   return { data: { ...data, sets }, tombstones };
