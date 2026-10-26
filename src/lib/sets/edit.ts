@@ -15,11 +15,12 @@ export type EditableSetField = (typeof EDITABLE_SET_FIELDS)[number];
 export type SetEditPatch = Partial<Pick<SetLog, EditableSetField>>;
 
 /**
- * Apagado. Se activa cuando se apliquen 0015/0016 y el sync tolerante.
- * Mientras tanto, la interfaz no muestra Eliminar y no crea tombstones de series.
- * Los que ya están en la cola tampoco se envían: se quedan ahí, sin borrarlos.
+ * Prendido. 0015, 0016 y 0017 ya están en producción: el dueño borra con
+ * soft_delete_own_set y sync_apply tolera una fila ajena u obsoleta.
+ * Eliminar vuelve a verse. Los tombstones de series se envían, también los
+ * que quedaron en la cola mientras el flag estuvo apagado.
  */
-export const SET_DELETE_ENABLED: boolean = false;
+export const SET_DELETE_ENABLED: boolean = true;
 
 export const SET_COPY = {
   edit: "Editar",
@@ -31,6 +32,11 @@ export const SET_COPY = {
   confirmTitle: "¿Eliminar esta serie?",
   confirmBody:
     "Se quita de este entrenamiento. El cambio queda en el teléfono y se sincroniza. No vuelve a aparecer.",
+  deletingTitle: "Eliminando la serie…",
+  deletingBody: "Se está quitando de este entrenamiento.",
+  deleteErrorTitle: "No se pudo eliminar",
+  deleteErrorBody: "La serie sigue en el teléfono. No se borró nada más.",
+  retry: "Reintentar",
   savedHint: "Listo lo guarda en el teléfono. Cancelar lo deja como estaba.",
   weight: "Peso (kg)",
   reps: "Reps",

@@ -127,8 +127,8 @@ export default function WorkoutDetailPage() {
               block={block}
               onChange={(setId, patch) => updateSet(setId, patch)}
               onDelete={(setId) => {
-                if (!SET_DELETE_ENABLED) return;
-                removeSet(setId);
+                if (!SET_DELETE_ENABLED) return false;
+                return removeSet(setId);
               }}
             />
           ) : block.kind === "circuit" ? (

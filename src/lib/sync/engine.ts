@@ -10,6 +10,7 @@ import { getSyncUserId, subscribeSyncUser } from "./session-user";
 import { isDemoTombstone, omitSeedHistory } from "@/lib/seed";
 import { snapshotFromState } from "./snapshot";
 import { applySyncItemResults, syncItemResults } from "./items";
+import { restoreRejectedSets, settleSetDeletes } from "./set-delete";
 import { rejectedFoodDays } from "./rejected";
 import { markServerHydrated, setFoodDayRejection, setSyncPhase } from "./status";
 import {
@@ -248,9 +249,35 @@ export function startGymSync() {
           settle("error");
           return;
         }
-        removeTombstones(prepared.tombstones);
+        const settlement = settleSetDeletes({
+          sent: prepared.tombstones,
+          serverTombstones: parseTombstones(pushed.tombstones),
+          items: outcomes,
+          serverSetIds: new Set(returned.sets.map((row) => row.id)),
+        });
+        const restored = restoreRejectedSets(ownSnapshot(userId), returned, [
+          ...settlement.keepSetIds,
+          ...settlement.keepQueued.map((row) => row.id),
+        ]);
+        if (!snapshotsMatch(restored, ownSnapshot(userId), ignoreReminders)) {
+          applyOwn(restored, userId);
+        }
+        removeTombstones(settlement.drain);
+        if (settlement.error) {
+          const refused = [
+            ...settlement.keepQueued.map((row) => `${row.id} (false)`),
+            ...settlement.keepSetIds.map((id) => `${id} (rejected)`),
+          ];
+          logSync(`set delete not applied: ${refused.join(", ")}`);
+          settle("error");
+          return;
+        }
       } else {
         setFoodDayRejection(false);
+        const alreadyRemote = prepared.tombstones.filter((row) =>
+          remoteDeletes.has(`${row.entity}:${row.id}`),
+        );
+        if (alreadyRemote.length > 0) removeTombstones(alreadyRemote);
       }
       const latest = ownSnapshot(userId);
       const latestStones = tombstonesForRound(migrated, latest, readTombstones(), remoteTombstones, ack);

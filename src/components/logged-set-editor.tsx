@@ -14,12 +14,59 @@ import { Button, NumberField } from "./ui";
 
 const TOUCH = "min-h-11 min-w-11";
 
+export async function finishSetDelete(
+  run: () => void | boolean | Promise<void | boolean>,
+): Promise<"deleted" | "error"> {
+  try {
+    const result = await run();
+    return result === false ? "error" : "deleted";
+  } catch {
+    return "error";
+  }
+}
+
+export function DeleteSetPending() {
+  if (!SET_DELETE_ENABLED) return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      data-set-editor="deleting"
+      className="space-y-2 rounded-xl border border-line bg-surface p-3"
+    >
+      <p className="text-sm font-medium">{SET_COPY.deletingTitle}</p>
+      <p className="text-sm text-muted">{SET_COPY.deletingBody}</p>
+    </div>
+  );
+}
+
+export function DeleteSetError({ onCancel, onRetry }: { onCancel: () => void; onRetry: () => void }) {
+  if (!SET_DELETE_ENABLED) return null;
+  return (
+    <div role="alert" data-set-editor="error" className="space-y-3 rounded-xl border border-danger/40 bg-danger/10 p-3">
+      <p className="text-sm font-medium">{SET_COPY.deleteErrorTitle}</p>
+      <p className="text-sm text-muted">{SET_COPY.deleteErrorBody}</p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button className={`${TOUCH} w-full sm:flex-1`} onClick={onCancel}>
+          {SET_COPY.cancel}
+        </Button>
+        <Button variant="danger" className={`${TOUCH} w-full border border-danger/40 sm:flex-1`} onClick={onRetry}>
+          {SET_COPY.retry}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function DeleteSetConfirm({
   onCancel,
   onConfirm,
+  body = SET_COPY.confirmBody,
 }: {
   onCancel: () => void;
   onConfirm: () => void;
+  body?: string;
 }) {
   const titleId = useId();
   const bodyId = useId();
@@ -36,13 +83,18 @@ export function DeleteSetConfirm({
         {SET_COPY.confirmTitle}
       </p>
       <p id={bodyId} className="text-sm text-muted">
-        {SET_COPY.confirmBody}
+        {body}
       </p>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button className={`${TOUCH} w-full sm:flex-1`} onClick={onCancel}>
           {SET_COPY.cancel}
         </Button>
-        <Button variant="danger" className={`${TOUCH} w-full border border-danger/40 sm:flex-1`} onClick={onConfirm}>
+        <Button
+          variant="danger"
+          className={`${TOUCH} w-full overflow-visible border border-danger/40 py-2 leading-normal sm:flex-1`}
+          style={{ height: "auto", minHeight: "2.75rem", fontWeight: 650 }}
+          onClick={onConfirm}
+        >
           {SET_COPY.confirmDelete}
         </Button>
       </div>
@@ -75,20 +127,32 @@ function ToggleField({
   );
 }
 
+type DeleteMode = "view" | "edit" | "confirm" | "deleting" | "error";
+
+function startingMode(initialMode: DeleteMode | undefined): DeleteMode {
+  if (!SET_DELETE_ENABLED) return "view";
+  if (initialMode === "confirm" || initialMode === "deleting" || initialMode === "error") return initialMode;
+  return "view";
+}
+
 export function LoggedSetEditor({
   set,
   label,
   unilateral,
   onChange,
   onDelete,
+  initialMode,
+  confirmBody,
 }: {
   set: SetLog;
   label: string;
   unilateral: boolean;
   onChange: (patch: SetEditPatch) => void;
-  onDelete: () => void;
+  onDelete: () => void | boolean | Promise<void | boolean>;
+  initialMode?: DeleteMode;
+  confirmBody?: string;
 }) {
-  const [mode, setMode] = useState<"view" | "edit" | "confirm">("view");
+  const [mode, setMode] = useState<DeleteMode>(() => startingMode(initialMode));
   const [draft, setDraft] = useState<SetEditPatch>(() => editableSetSnapshot(set));
   const showRight = unilateral || set.repsRight != null;
   const shown = mode === "edit" ? { ...set, ...draft } : set;
@@ -107,6 +171,12 @@ export function LoggedSetEditor({
     const patch = commitSetDraft(editableSetSnapshot(set), draft);
     if (patch) onChange(patch);
     setMode("view");
+  }
+
+  async function confirmDelete() {
+    setMode("deleting");
+    const outcome = await finishSetDelete(onDelete);
+    if (outcome === "error") setMode("error");
   }
 
   return (
@@ -188,7 +258,23 @@ export function LoggedSetEditor({
 
       {mode === "confirm" && SET_DELETE_ENABLED ? (
         <div className="mt-3">
-          <DeleteSetConfirm onCancel={() => setMode("view")} onConfirm={onDelete} />
+          <DeleteSetConfirm
+            body={confirmBody}
+            onCancel={() => setMode("view")}
+            onConfirm={() => void confirmDelete()}
+          />
+        </div>
+      ) : null}
+
+      {mode === "deleting" && SET_DELETE_ENABLED ? (
+        <div className="mt-3">
+          <DeleteSetPending />
+        </div>
+      ) : null}
+
+      {mode === "error" && SET_DELETE_ENABLED ? (
+        <div className="mt-3">
+          <DeleteSetError onCancel={() => setMode("view")} onRetry={() => void confirmDelete()} />
         </div>
       ) : null}
     </div>

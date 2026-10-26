@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { createSeed } from "../seed.ts";
+import { setDuoUnlocked } from "../session-flag.ts";
 import { SET_COPY, SET_DELETE_ENABLED, commitSetDraft, editableSetSnapshot, setEditPatch } from "./edit.ts";
 import { toSyncPayload } from "../sync/payload.ts";
 import { queueSetDeletion, setDeletionTombstone } from "../sync/set-delete.ts";
@@ -48,15 +49,15 @@ describe("series edits", () => {
     );
   });
 
-  test("con el flag apagado no encola un tombstone y sigue ignorando ids de demo", () => {
+  test("con el flag prendido encola el tombstone y sigue ignorando ids de demo", () => {
     memory.clear();
     setSyncStorageUser("11111111-1111-4111-8111-111111111111");
-    assert.equal(SET_DELETE_ENABLED, false);
+    assert.equal(SET_DELETE_ENABLED, true);
     assert.equal(setDeletionTombstone("w-cr-d5-b1-s1-1"), null);
     assert.deepEqual(setDeletionTombstone("set-phone"), { entity: "sets", id: "set-phone" });
     queueSetDeletion("w-cr-d5-b1-s1-1");
     queueSetDeletion("set-phone");
-    assert.deepEqual(readTombstones(), []);
+    assert.deepEqual(readTombstones(), [{ entity: "sets", id: "set-phone" }]);
   });
 
   test("the sync payload carries the edited fields and the delete", () => {
@@ -148,7 +149,9 @@ describe("series edits", () => {
 
   test("the editor copy is Colombian Spanish and the controls are at least 44px", () => {
     assert.equal(SET_COPY.confirmTitle, "¿Eliminar esta serie?");
+    assert.equal(SET_COPY.confirmDelete, "Sí, eliminar");
     assert.match(SET_COPY.confirmBody, /teléfono/);
+    assert.match(SET_COPY.confirmBody, /se sincroniza/);
     assert.match(SET_COPY.confirmBody, /No vuelve a aparecer/);
     assert.equal(/vosotros|ordenador|vale/.test(Object.values(SET_COPY).join(" ")), false);
     const ui = readFileSync(new URL("../../components/logged-set-editor.tsx", import.meta.url), "utf8");
@@ -164,14 +167,17 @@ describe("series edits", () => {
     assert.match(circuit, /LoggedSetEditor/);
   });
 
-  test("Eliminar no se renderiza con el flag apagado", async () => {
-    assert.equal(SET_DELETE_ENABLED, false);
+  test("con el flag prendido Eliminar se ve, confirma, y un false no quita la serie", async () => {
+    assert.equal(SET_DELETE_ENABLED, true);
     memory.clear();
     setSyncStorageUser("11111111-1111-4111-8111-111111111111");
+    setDuoUnlocked(true);
 
     const { createElement } = await import("react");
     const { renderToStaticMarkup } = await import("react-dom/server");
-    const { LoggedSetEditor } = await import("../../components/logged-set-editor.tsx");
+    const { DeleteSetError, DeleteSetPending, LoggedSetEditor, finishSetDelete } = await import(
+      "../../components/logged-set-editor.tsx"
+    );
     const { StraightBlock } = await import("../../components/straight-block.tsx");
     const { useGymStore } = await import("../store.ts");
 
@@ -200,9 +206,10 @@ describe("series edits", () => {
         },
       }),
     );
-    assert.equal(/eliminar/i.test(list), false);
+    assert.match(list, /Eliminar/);
     assert.match(list, /Editar/);
     assert.match(list, /data-set-actions="view"/);
+    assert.equal(list.includes("¿Eliminar esta serie?"), false);
 
     const straight = renderToStaticMarkup(
       createElement(StraightBlock, {
@@ -237,16 +244,58 @@ describe("series edits", () => {
         },
       }),
     );
-    assert.equal(/eliminar/i.test(straight), false);
+    assert.match(straight, /Eliminar serie/);
     assert.match(straight, /Press banca/);
+
+    const pending = renderToStaticMarkup(createElement(DeleteSetPending));
+    assert.match(pending, /Eliminando la serie/);
+    assert.match(pending, /aria-busy="true"/);
+    assert.match(pending, /data-set-editor="deleting"/);
+    const error = renderToStaticMarkup(
+      createElement(DeleteSetError, {
+        onCancel() {},
+        onRetry() {},
+      }),
+    );
+    assert.match(error, /No se pudo eliminar/);
+    assert.match(error, /No se borró nada más/);
+    assert.match(error, /data-set-editor="error"/);
+    assert.match(error, /Reintentar/);
+    assert.equal(await finishSetDelete(() => false), "error");
+    assert.equal(await finishSetDelete(() => true), "deleted");
+    assert.equal(
+      await finishSetDelete(() => {
+        throw new Error("red");
+      }),
+      "error",
+    );
 
     const before = useGymStore.getState().sets.length;
     useGymStore.setState({ sets: [...useGymStore.getState().sets, set] });
-    useGymStore.getState().removeSet(set.id);
-    queueSetDeletion(set.id);
-    assert.equal(useGymStore.getState().sets.some((row) => row.id === set.id), true);
-    assert.equal(useGymStore.getState().sets.length, before + 1);
+    assert.equal(useGymStore.getState().removeSet(set.id), true);
+    assert.equal(useGymStore.getState().sets.some((row) => row.id === set.id), false);
+    assert.equal(useGymStore.getState().sets.length, before);
+    assert.deepEqual(readTombstones(), [{ entity: "sets", id: "set-phone" }]);
+
+    memory.clear();
+    const kept = { ...set, id: "set-locked" };
+    useGymStore.setState({ sets: [...useGymStore.getState().sets, kept] });
+    setDuoUnlocked(false);
+    assert.equal(useGymStore.getState().removeSet(kept.id), false);
+    assert.equal(useGymStore.getState().sets.some((row) => row.id === kept.id), true);
     assert.deepEqual(readTombstones(), []);
+    setDuoUnlocked(true);
+
+    const editor = readFileSync(new URL("../../components/logged-set-editor.tsx", import.meta.url), "utf8");
+    assert.match(editor, /setMode\("deleting"\)/);
+    assert.match(editor, /outcome === "error"/);
+    assert.match(editor, /DeleteSetPending/);
+    assert.match(editor, /DeleteSetError/);
+    const straightSrc = readFileSync(new URL("../../components/straight-block.tsx", import.meta.url), "utf8");
+    assert.match(straightSrc, /DeleteSetPending/);
+    assert.match(straightSrc, /DeleteSetError/);
+    assert.match(straightSrc, /phase: "deleting"/);
+    assert.match(straightSrc, /phase: "error"/);
 
     for (const rel of [
       "../../components/logged-set-editor.tsx",
@@ -260,6 +309,18 @@ describe("series edits", () => {
       const text = readFileSync(new URL(rel, import.meta.url), "utf8");
       assert.match(text, /SET_DELETE_ENABLED/, rel);
     }
+  });
+
+  test("la sesión de prueba no dice que se sincroniza", () => {
+    const mock = readFileSync(new URL("../../app/dev/series/series-mock.tsx", import.meta.url), "utf8");
+    assert.match(mock, /Se quita de este entrenamiento\. No vuelve a aparecer\./);
+    assert.equal(mock.includes("se sincroniza"), false);
+    assert.match(mock, /confirmBody=/);
+    const editor = readFileSync(new URL("../../components/logged-set-editor.tsx", import.meta.url), "utf8");
+    assert.match(editor, /body = SET_COPY\.confirmBody/);
+    assert.match(editor, /confirmBody/);
+    assert.match(SET_COPY.confirmBody, /teléfono/);
+    assert.match(SET_COPY.confirmBody, /se sincroniza/);
   });
 
   test("the local mock never opens Supabase", () => {

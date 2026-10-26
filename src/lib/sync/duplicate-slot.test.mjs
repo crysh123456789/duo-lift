@@ -274,12 +274,12 @@ describe("sync_apply 0014 duplicate slot", () => {
       prepared.snapshot.sets.map((row) => row.id),
       ["set-new"],
     );
-    assert.deepEqual(prepared.tombstones, []);
+    assert.deepEqual(prepared.tombstones, [{ entity: "sets", id: "set-old" }]);
     assert.equal(prepared.keepsHistory, true);
     const payload = toSyncPayload(prepared.snapshot, prepared.tombstones);
     assert.equal(payload.sets.length, 1);
     assert.equal(payload.sets[0].id, "set-new");
-    assert.deepEqual(payload.tombstones, []);
+    assert.deepEqual(payload.tombstones, [{ entity: "sets", id: "set-old" }]);
 
     const applied = await db.query(`select public.sync_apply($1::jsonb) as body`, [JSON.stringify(payload)]);
     const body = applied.rows[0].body;

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { LoggedSetEditor } from "@/components/logged-set-editor";
 import { SET_DELETE_ENABLED } from "@/lib/sets/edit";
 import { useGymStore } from "@/lib/store";
 
+const LOCAL_CONFIRM_BODY = "Se quita de este entrenamiento. No vuelve a aparecer.";
 const MOCK_WORKOUT = "mock-session";
 const MOCK_BLOCK = "mock-block";
 const MOCK_STATION = "mock-station";
@@ -85,6 +86,14 @@ function ensureMockSession() {
   });
 }
 
+function subscribePreview() {
+  return () => {};
+}
+
+function readPreview() {
+  return new URLSearchParams(window.location.search).get("borrar");
+}
+
 /** Phone-only fixture. Sync stays on Local because this route never sets a user id. */
 export function SeriesMock() {
   const allSets = useGymStore((state) => state.sets);
@@ -93,10 +102,19 @@ export function SeriesMock() {
     .sort((a, b) => a.setIndex - b.setIndex);
   const updateSet = useGymStore((state) => state.updateSet);
   const removeSet = useGymStore((state) => state.removeSet);
+  const preview = useSyncExternalStore(subscribePreview, readPreview, () => null);
 
   useEffect(() => {
     ensureMockSession();
   }, []);
+
+  function initialMode(index: number) {
+    if (index !== 0 || !SET_DELETE_ENABLED) return undefined;
+    if (preview === "confirmar") return "confirm" as const;
+    if (preview === "eliminando") return "deleting" as const;
+    if (preview === "error") return "error" as const;
+    return undefined;
+  }
 
   return (
     <div className="mx-auto max-w-lg space-y-4">
@@ -110,14 +128,16 @@ export function SeriesMock() {
       ) : (
         sets.map((set, index) => (
           <LoggedSetEditor
-            key={set.id}
+            key={`${set.id}-${preview ?? "view"}`}
             set={set}
             label={`Serie ${index + 1}`}
             unilateral={false}
+            initialMode={initialMode(index)}
+            confirmBody={LOCAL_CONFIRM_BODY}
             onChange={(patch) => updateSet(set.id, patch)}
             onDelete={() => {
-              if (!SET_DELETE_ENABLED) return;
-              removeSet(set.id);
+              if (!SET_DELETE_ENABLED) return false;
+              return removeSet(set.id);
             }}
           />
         ))

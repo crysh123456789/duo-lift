@@ -2,7 +2,7 @@
 
 import { Check, Minus, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { DeleteSetConfirm } from "@/components/logged-set-editor";
+import { DeleteSetConfirm, DeleteSetError, DeleteSetPending, finishSetDelete } from "@/components/logged-set-editor";
 import { SET_COPY, SET_DELETE_ENABLED } from "@/lib/sets/edit";
 import type { BlockNode } from "@/lib/workout-tree";
 import { formatLoad } from "@/lib/copy";
@@ -27,7 +27,15 @@ export function StraightBlock({
   const addSet = useGymStore((s) => s.addSet);
   const removeSet = useGymStore((s) => s.removeSet);
   const removeBlock = useGymStore((s) => s.removeBlock);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deletePhase, setDeletePhase] = useState<{ id: string; phase: "confirm" | "deleting" | "error" } | null>(
+    null,
+  );
+
+  async function confirmDelete(setId: string) {
+    setDeletePhase({ id: setId, phase: "deleting" });
+    const outcome = await finishSetDelete(() => removeSet(setId));
+    if (outcome === "error") setDeletePhase({ id: setId, phase: "error" });
+  }
 
   if (!station) return null;
   const unilateral = station.exercise.isUnilateral;
@@ -131,21 +139,28 @@ export function StraightBlock({
             {pr ? (
               <p className="col-span-full text-[11px] text-accent">PR · superaste la carga previa</p>
             ) : null}
-            {SET_DELETE_ENABLED && confirmId === set.id ? (
+            {SET_DELETE_ENABLED && deletePhase?.id === set.id && deletePhase.phase === "confirm" ? (
               <div className="col-span-full">
-                <DeleteSetConfirm
-                  onCancel={() => setConfirmId(null)}
-                  onConfirm={() => {
-                    removeSet(set.id);
-                    setConfirmId(null);
-                  }}
+                <DeleteSetConfirm onCancel={() => setDeletePhase(null)} onConfirm={() => void confirmDelete(set.id)} />
+              </div>
+            ) : null}
+            {SET_DELETE_ENABLED && deletePhase?.id === set.id && deletePhase.phase === "deleting" ? (
+              <div className="col-span-full">
+                <DeleteSetPending />
+              </div>
+            ) : null}
+            {SET_DELETE_ENABLED && deletePhase?.id === set.id && deletePhase.phase === "error" ? (
+              <div className="col-span-full">
+                <DeleteSetError
+                  onCancel={() => setDeletePhase(null)}
+                  onRetry={() => void confirmDelete(set.id)}
                 />
               </div>
             ) : null}
-            {SET_DELETE_ENABLED && confirmId !== set.id ? (
+            {SET_DELETE_ENABLED && deletePhase?.id !== set.id ? (
               <button
                 type="button"
-                onClick={() => setConfirmId(set.id)}
+                onClick={() => setDeletePhase({ id: set.id, phase: "confirm" })}
                 className="col-span-full inline-flex min-h-11 min-w-11 items-center rounded-xl px-3 text-left text-sm text-danger"
               >
                 {SET_COPY.deleteSeries}
