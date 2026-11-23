@@ -6,6 +6,8 @@ import {
   BODY_WEIGHT_ERROR,
   BODY_WEIGHT_NUMERIC_ERROR,
   collapseFoodDays,
+  copiedDayMeals,
+  copyMealEntry,
   dayTotals,
   diaryProteinGoal,
   emptyMeals,
@@ -13,6 +15,7 @@ import {
   formatTotals,
   macroKcal,
   manualProteinGoal,
+  mergeFoodDayPair,
   parseBodyWeightInput,
   proteinGoalAfterConfirm,
   proteinGoalNeedsConfirm,
@@ -25,6 +28,7 @@ import {
   normalizeMealLog,
   nutritionComment,
   parseMealDump,
+  previousLoggedFoodDay,
   proteinTargetG,
   upsertFoodDay,
 } from "./nutrition.ts";
@@ -718,5 +722,141 @@ describe("time and items persistence", () => {
     );
     assert.equal(reloaded.foodDays[0].meals.desayuno.items.length, 0);
     assert.equal(dayTotals(reloaded.foodDays[0].meals).proteinG, 0);
+  });
+});
+
+describe("repeat the previous day", () => {
+  const pollo = { id: "pollo", name: "Pollo", grams: 150, proteinG: 40, carbsG: 0, fatG: 5 };
+
+  function dayRow(date, meals, userId = cristian.id) {
+    return {
+      id: `food-${userId}-${date}`,
+      userId,
+      date,
+      meals,
+      comment: "",
+      rawInput: null,
+      updatedAt: `${date}T20:00:00.000Z`,
+    };
+  }
+
+  test("finds the nearest earlier day with anything logged", () => {
+    const snack = emptyMeals();
+    snack.cena = { time: "20:30", note: "", items: [pollo] };
+    const data = {
+      foodDays: [
+        dayRow("2026-10-20", breakfastLog()),
+        dayRow("2026-10-21", emptyMeals()),
+        dayRow("2026-10-22", snack),
+        dayRow("2026-10-23", breakfastLog(), "user-otra"),
+      ],
+    };
+    // The 21st has nothing logged, so the source for the 22nd is the 20th.
+    assert.equal(previousLoggedFoodDay(data, cristian.id, "2026-10-22")?.date, "2026-10-20");
+    assert.equal(previousLoggedFoodDay(data, cristian.id, "2026-10-23")?.date, "2026-10-22");
+    // The other person's 23rd never becomes Cristian's source.
+    assert.equal(previousLoggedFoodDay(data, cristian.id, "2026-10-24")?.date, "2026-10-22");
+    assert.equal(previousLoggedFoodDay(data, cristian.id, "2026-10-20"), null);
+    assert.equal(previousLoggedFoodDay({ foodDays: [] }, cristian.id, "2026-10-24"), null);
+  });
+
+  test("copies a slot with fresh ids and leaves the original untouched", () => {
+    const source = { time: "08:30", note: "con café", items: [huevo, avena] };
+    let n = 0;
+    const copy = copyMealEntry(source, () => `nuevo-${++n}`);
+    assert.equal(copy.time, "08:30");
+    assert.equal(copy.note, "con café");
+    assert.deepEqual(
+      copy.items.map((item) => item.id),
+      ["nuevo-1", "nuevo-2"],
+    );
+    assert.deepEqual(
+      copy.items.map((item) => item.name),
+      ["Huevo", "Avena"],
+    );
+    copy.items[0].name = "Tortilla";
+    copy.note = "otra nota";
+    assert.equal(source.items[0].name, "Huevo");
+    assert.equal(source.note, "con café");
+    // An empty or legacy slot copies without error.
+    assert.deepEqual(copyMealEntry(undefined), { time: null, note: "", items: [] });
+    assert.deepEqual(copyMealEntry("nota suelta"), { time: null, note: "nota suelta", items: [] });
+  });
+
+  test("a full-day copy fills the slots and marks the replaced ones as cleared", () => {
+    const source = breakfastLog();
+    source.cena = { time: "20:30", note: "", items: [pollo] };
+    const current = emptyMeals();
+    current.desayuno = {
+      time: "07:00",
+      note: "",
+      items: [{ id: "pan", name: "Pan", grams: 40, proteinG: 4, carbsG: 20, fatG: 1 }],
+    };
+    current.almuerzo = { time: "13:00", note: "", items: [pollo] };
+    let n = 0;
+    const copied = copiedDayMeals({ source, current, createId: () => `copia-${++n}` });
+    assert.deepEqual(
+      copied.desayuno.items.map((item) => item.name),
+      ["Huevo", "Avena", "Leche"],
+    );
+    assert.ok(copied.desayuno.items.every((item) => item.id.startsWith("copia-")));
+    assert.equal(copied.desayuno.cleared, undefined);
+    assert.equal(copied.cena.items[0].name, "Pollo");
+    // Almuerzo was empty on the source day: it stays empty and is marked
+    // cleared, so a merge cannot refill it from the pre-copy day.
+    assert.deepEqual(copied.almuerzo.items, []);
+    assert.equal(copied.almuerzo.cleared, true);
+    // Media mañana was empty on both days: empty, no flag needed.
+    assert.deepEqual(copied.mediaManana, { time: null, note: "", items: [] });
+  });
+
+  test("saving a repeated day replaces the target and the cleared slot survives a merge", () => {
+    const first = upsertFoodDay({
+      foodDays: [],
+      user: cristian,
+      userId: cristian.id,
+      date: "2026-10-22",
+      meals: breakfastLog(),
+      now: "2026-10-22T12:00:00.000Z",
+      createId: () => "food-22",
+    });
+    const withToday = upsertFoodDay({
+      foodDays: first.foodDays,
+      user: cristian,
+      userId: cristian.id,
+      date: "2026-10-23",
+      meals: { almuerzo: { time: "13:00", note: "", items: [pollo] } },
+      now: "2026-10-23T09:00:00.000Z",
+      createId: () => "food-23",
+    });
+    const previous = previousLoggedFoodDay({ foodDays: withToday.foodDays }, cristian.id, "2026-10-23");
+    assert.equal(previous?.date, "2026-10-22");
+    let n = 0;
+    const copied = copiedDayMeals({
+      source: previous.meals,
+      current: withToday.saved.meals,
+      createId: () => `copia-${++n}`,
+    });
+    const result = upsertFoodDay({
+      foodDays: withToday.foodDays,
+      user: cristian,
+      userId: cristian.id,
+      date: "2026-10-23",
+      meals: copied,
+      now: "2026-10-23T09:30:00.000Z",
+    });
+    assert.deepEqual(
+      result.saved.meals.desayuno.items.map((item) => item.name),
+      ["Huevo", "Avena", "Leche"],
+    );
+    assert.deepEqual(result.saved.meals.almuerzo.items, []);
+    assert.equal(result.saved.meals.almuerzo.cleared, true);
+
+    const merged = mergeFoodDayPair(withToday.saved, result.saved);
+    assert.deepEqual(merged.meals.almuerzo.items, []);
+    assert.deepEqual(
+      merged.meals.desayuno.items.map((item) => item.name),
+      ["Huevo", "Avena", "Leche"],
+    );
   });
 });

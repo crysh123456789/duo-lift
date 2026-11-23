@@ -15,8 +15,11 @@ import {
   OPTIONAL_NOTE_LABEL,
   PROTEIN_TODAY_LABEL,
   QUICK_ITEM_LABEL,
+  REPEAT_LABEL,
   SAVED_NOTE_LABEL,
   blankMealItem,
+  copiedDayMeals,
+  copyMealEntry,
   dayTotals,
   foodDayFor,
   formatDayTotals,
@@ -29,6 +32,7 @@ import {
   manualKcalGoal,
   manualProteinGoal,
   normalizeMealLog,
+  previousLoggedFoodDay,
   shiftStamp,
   todayStamp,
 } from "@/lib/nutrition";
@@ -98,6 +102,7 @@ export function NutritionDiary() {
           onToday={date === today ? undefined : () => selectDate(today)}
           onOpen={openMeal}
           onQuick={quickAdd}
+          onCopied={() => setToast(true)}
         />
       )}
       {toast ? (
@@ -119,6 +124,7 @@ function DayScreen({
   onToday,
   onOpen,
   onQuick,
+  onCopied,
 }: {
   date: string;
   onDate: (stamp: string) => void;
@@ -126,11 +132,15 @@ function DayScreen({
   onToday?: () => void;
   onOpen: (slot: MealSlot) => void;
   onQuick: (slot: MealSlot) => void;
+  onCopied: () => void;
 }) {
   const data = useGymStore();
+  const saveFoodDay = useGymStore((s) => s.saveFoodDay);
   const me = data.users.find((user) => user.id === data.activeUserId);
   const saved = foodDayFor(data, data.activeUserId, date);
   const meals = saved?.meals ?? normalizeMealLog(undefined);
+  const previous = previousLoggedFoodDay(data, data.activeUserId, date);
+  const dayHasContent = MEAL_SLOTS.some((slot) => mealLogged(meals[slot.id]));
   const totals = dayTotals(meals);
   const totalsLabel = formatDayTotals(totals, me);
   const prompt = nextMealPrompt(meals);
@@ -138,6 +148,21 @@ function DayScreen({
   const quickLabel = MEAL_SLOTS.find((slot) => slot.id === quickSlot)?.label ?? "Cena";
   const proteinLabel = date === todayStamp() ? PROTEIN_TODAY_LABEL : "Proteína";
   const [goalsOpen, setGoalsOpen] = useState(false);
+  const [confirmDate, setConfirmDate] = useState<string | null>(null);
+  const confirmingRepeat = confirmDate === date;
+
+  function repeatPreviousDay() {
+    if (!previous) return;
+    const copied = copiedDayMeals({ source: previous.meals, current: meals });
+    const id = saveFoodDay({ date, meals: copied });
+    setConfirmDate(null);
+    if (id) onCopied();
+  }
+
+  function askRepeat() {
+    if (dayHasContent) setConfirmDate(date);
+    else repeatPreviousDay();
+  }
 
   return (
     <div className="space-y-4">
@@ -200,6 +225,29 @@ function DayScreen({
           );
         })}
       </ul>
+      {previous ? (
+        <div className="space-y-2">
+          {confirmingRepeat ? (
+            <div className="flex gap-2">
+              <Button variant="danger" className="h-12 min-h-12 flex-1" onClick={repeatPreviousDay}>
+                Confirmar
+              </Button>
+              <Button className="h-12 min-h-12 flex-1" onClick={() => setConfirmDate(null)}>
+                Cancelar
+              </Button>
+            </div>
+          ) : (
+            <Button className="h-12 min-h-12 w-full" onClick={askRepeat}>
+              {REPEAT_LABEL}
+            </Button>
+          )}
+          <p className="text-center text-xs text-muted">
+            {confirmingRepeat
+              ? `Reemplaza lo que ya tienes en este día por lo de ${whenLabel(`${previous.date}T12:00:00`)}`
+              : `Copia en este día lo de ${whenLabel(`${previous.date}T12:00:00`)}`}
+          </p>
+        </div>
+      ) : null}
       {saved?.comment ? (
         <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm">{saved.comment}</p>
       ) : null}
@@ -290,6 +338,8 @@ function MealEditor({
   const me = data.users.find((user) => user.id === data.activeUserId);
   const saved = foodDayFor(data, data.activeUserId, date);
   const meals = saved?.meals ?? normalizeMealLog(undefined);
+  const previous = previousLoggedFoodDay(data, data.activeUserId, date);
+  const previousEntry = previous?.meals[slot];
   const label = MEAL_SLOTS.find((item) => item.id === slot)?.label ?? "Comida";
   const [entry, setEntry] = useState<MealEntry>(() => {
     const current = meals[slot];
@@ -333,6 +383,16 @@ function MealEditor({
         </Button>
       </div>
       <TimeInput time={entry.time} onChange={(time) => setEntry((prev) => ({ ...prev, time }))} />
+      {previous && previousEntry && mealLogged(previousEntry) ? (
+        <div className="space-y-2">
+          <Button className="h-12 min-h-12 w-full" onClick={() => setEntry(copyMealEntry(previousEntry))}>
+            {REPEAT_LABEL}
+          </Button>
+          <p className="text-center text-xs text-muted">
+            Trae el {label.toLowerCase()} de {whenLabel(`${previous.date}T12:00:00`)}
+          </p>
+        </div>
+      ) : null}
       {entry.items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line px-3 py-4 text-sm text-muted">{EMPTY_ITEMS_COPY}</p>
       ) : (
