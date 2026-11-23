@@ -16,6 +16,7 @@ export const EMPTY_ITEMS_COPY = "Aún no hay alimentos — añade el primero";
 export const SAVED_NOTE_LABEL = "Nota guardada";
 export const OPTIONAL_NOTE_LABEL = "Nota opcional";
 export const QUICK_ITEM_LABEL = "+ Ítem rápido";
+export const REPEAT_LABEL = "Repetir";
 
 const TIME = /^(\d{1,2}):(\d{2})$/;
 
@@ -726,6 +727,51 @@ export function nutritionComment(user: User, meals: unknown): string {
 
 export function foodDayFor(data: { foodDays?: FoodDay[] }, userId: string, date: string) {
   return normalizeFoodDays(data.foodDays).find((d) => d.userId === userId && d.date === date) ?? null;
+}
+
+/** The nearest earlier day with anything logged, or null. The copy source for "Repetir". */
+export function previousLoggedFoodDay(
+  data: { foodDays?: FoodDay[] },
+  userId: string,
+  date: string,
+): FoodDay | null {
+  const candidates = normalizeFoodDays(data.foodDays)
+    .filter((day) => day.userId === userId && day.date < date)
+    .filter((day) => MEAL_SLOTS.some((slot) => mealLogged(day.meals[slot.id])))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  return candidates[0] ?? null;
+}
+
+/** Deep copy of one slot with fresh item ids, so editing the copy never touches the original. */
+export function copyMealEntry(value: unknown, createId: () => string = nid): MealEntry {
+  const entry = normalizeMealEntry(value);
+  return {
+    time: entry.time,
+    note: entry.note,
+    items: entry.items.map((item) => ({ ...item, id: createId() })),
+  };
+}
+
+/**
+ * The meals for repeating a whole day: fresh copies of every slot of `source`.
+ * A slot the copy leaves empty where the current day had items is marked
+ * cleared, so sync keeps the replacement instead of refilling the slot.
+ */
+export function copiedDayMeals(args: {
+  source: unknown;
+  current: unknown;
+  createId?: () => string;
+}): MealLog {
+  const createId = args.createId ?? nid;
+  const source = normalizeMealLog(args.source);
+  const current = normalizeMealLog(args.current);
+  const meals = emptyMeals();
+  for (const slot of MEAL_SLOTS) {
+    const copy = copyMealEntry(source[slot.id], createId);
+    meals[slot.id] =
+      copy.items.length === 0 && current[slot.id].items.length > 0 ? { ...copy, cleared: true } : copy;
+  }
+  return meals;
 }
 
 export function nextMealPrompt(meals: unknown): { id: MealSlot; question: string } | null {
