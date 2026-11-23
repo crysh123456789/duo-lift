@@ -148,22 +148,19 @@ function DayScreen({
   const quickLabel = MEAL_SLOTS.find((slot) => slot.id === quickSlot)?.label ?? "Cena";
   const proteinLabel = date === todayStamp() ? PROTEIN_TODAY_LABEL : "Proteína";
   const [goalsOpen, setGoalsOpen] = useState(false);
-  const [confirmingRepeat, setConfirmingRepeat] = useState(false);
-
-  useEffect(() => {
-    setConfirmingRepeat(false);
-  }, [date]);
+  const [confirmDate, setConfirmDate] = useState<string | null>(null);
+  const confirmingRepeat = confirmDate === date;
 
   function repeatPreviousDay() {
     if (!previous) return;
     const copied = copiedDayMeals({ source: previous.meals, current: meals });
     const id = saveFoodDay({ date, meals: copied });
-    setConfirmingRepeat(false);
+    setConfirmDate(null);
     if (id) onCopied();
   }
 
   function askRepeat() {
-    if (dayHasContent) setConfirmingRepeat(true);
+    if (dayHasContent) setConfirmDate(date);
     else repeatPreviousDay();
   }
 
@@ -235,7 +232,7 @@ function DayScreen({
               <Button variant="danger" className="h-12 min-h-12 flex-1" onClick={repeatPreviousDay}>
                 Confirmar
               </Button>
-              <Button className="h-12 min-h-12 flex-1" onClick={() => setConfirmingRepeat(false)}>
+              <Button className="h-12 min-h-12 flex-1" onClick={() => setConfirmDate(null)}>
                 Cancelar
               </Button>
             </div>
